@@ -15,8 +15,9 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
     "test": "vitest run --passWithNoTests",
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "prepare": "husky"
   },
   "engines": {
