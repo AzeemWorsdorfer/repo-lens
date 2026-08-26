@@ -9,6 +9,7 @@ export default [
       "coverage/**",
       ".husky/**",
       ".scratch/**",
+      "test/fixtures/**",
     ],
   },
   js.configs.recommended,
