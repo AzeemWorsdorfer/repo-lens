@@ -2,7 +2,7 @@
 
 > Understand any codebase in minutes. One command. One interactive report.
 
-**Status: in development** - the spec and tickets below define the planned product; no code has landed yet.
+**Status: in development** - the JSON graph report is implemented (`scan --emit json`); the HTML viewer, remaining language resolvers, LLM layer, and MCP server are planned (see roadmap).
 
 `repo-lens` is a CLI that scans a repository and produces a single self-contained, interactive HTML report visualizing how the code works: the module dependency graph, dependency cycles, a folder treemap, a complexity-vs-coupling scatter, and - when an LLM is configured - an architecture overview with flow diagrams for key entry points.
 
@@ -29,18 +29,16 @@ Hybrid understanding, in three layers:
 
 TypeScript / JavaScript, Python, Go, Java, Rust, and C/C++ - each with a pluggable resolver in a registry, so adding a language is a small PR.
 
-## CLI (planned)
+## CLI
+
+The scan subcommand is live for the JSON report; `html`, `serve`, and `mcp` are planned.
 
 ```
-repo-lens scan [path]      # report to repo-lens-report.html
-  --output <file>          # report file path
-  --emit html|json         # json = machine-readable graph report
-  --open                   # open in browser
-  --no-llm                 # skip LLM pass
-  --budget <tokens>        # LLM token budget
-  --config <path>          # config file
-repo-lens serve [path]     # local viewer for large reports
-repo-lens mcp              # stdio MCP server (scan/summarize/query-graph)
+repo-lens scan [path]      # scan a repository; prints the JSON report
+  --emit json|html         # json = machine-readable graph report (html planned)
+  --output <file>          # write the report to a file instead of stdout
+repo-lens serve [path]     # local viewer for large reports (planned)
+repo-lens mcp              # stdio MCP server (scan/summarize/query-graph) (planned)
 ```
 
 LLM configuration is provider-agnostic via environment variables:
@@ -50,7 +48,7 @@ LLM configuration is provider-agnostic via environment variables:
 
 - [x] Spec (`.scratch/repo-lens/SPEC.md`)
 - [x] Ticket breakdown (`.scratch/repo-lens/issues/`)
-- [ ] Tracer bullet: scan a TypeScript repo into a deterministic JSON report
+- [x] Tracer bullet: scan a TypeScript repo into a deterministic JSON report
 - [ ] Python, Go, Java, Rust, C/C++ resolvers
 - [ ] Interactive HTML report
 - [ ] LLM understanding layer
