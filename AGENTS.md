@@ -18,3 +18,10 @@ Instructions for AI coding agents working in this repository. Humans should read
 - Reports and scans must be deterministic: explicit, stable ordering everywhere.
 - Commit messages are conventional (`feat(scope): summary`); never auto-add an agent name as co-author.
 - Do not commit generated files (build output, coverage, node_modules).
+
+## Branching and CI
+
+- `main` is protected and always green: no direct pushes, PRs only, CI must pass.
+- All work happens on feature branches named after the ticket: `feat/<NN>-<slug>` (e.g. `feat/01-tracer-bullet`). One branch per ticket, short-lived, opened as a draft PR early.
+- CI (`.github/workflows/ci.yml`) runs on every PR and on push to `main`: install, lint, typecheck, test (build included). A merge to `main` must be green.
+- Pre-commit hooks (Husky + lint-staged) format staged files and run typecheck + tests before every commit - never bypass them with `--no-verify`.

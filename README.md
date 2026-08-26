@@ -59,7 +59,7 @@ LLM configuration is provider-agnostic via environment variables:
 
 ## Development
 
-Requires Node.js and npm. Build and test commands will be documented here as the tool lands.
+Requires Node.js and npm. Hooks (Husky + lint-staged + Prettier + typecheck + tests) run on every commit; CI runs the same gates on every PR against `main`. Branch rules: `main` is protected - no direct pushes, PRs only; work on `feat/<NN>-<slug>` branches matching the tickets in `.scratch/repo-lens/issues/`.
 
 ## License
 

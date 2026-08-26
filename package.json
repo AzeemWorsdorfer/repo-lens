@@ -1,0 +1,36 @@
+{
+  "name": "repo-lens",
+  "version": "0.1.0",
+  "description": "Understand any codebase in minutes: scans a repo and produces a self-contained, interactive HTML report of its architecture.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "repo-lens": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "prepare": "husky"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.3.0",
+    "eslint": "^10.9.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
