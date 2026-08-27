@@ -1,0 +1,3 @@
+# Scratch scripts and bytecode are not part of the fixture's source.
+scratch.py
+__pycache__/
