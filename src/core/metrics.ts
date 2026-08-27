@@ -16,6 +16,10 @@ const DECISION_TYPES: string[] = [
   "switch_case",
   "catch_clause",
   "ternary_expression",
+  // Python equivalents of the JS/TS nodes above, per ADR 0002.
+  "except_clause",
+  "case_clause",
+  "conditional_expression",
 ];
 
 /** Binary operators that short-circuit and count as a decision point. */
