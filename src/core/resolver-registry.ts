@@ -45,6 +45,12 @@ export interface LanguageResolver {
    * entrypoints are found by metadata only.
    */
   isEntryScript?(root: Node): boolean;
+  /**
+   * True when a module path is an entrypoint for its ecosystem without
+   * needing a parse (e.g. Python's `__main__.py`). Absent for languages
+   * whose entrypoints are found by metadata or AST only.
+   */
+  isEntrypointPath?(path: string): boolean;
 }
 
 /** The ordered set of resolvers, newest languages appended here. */

@@ -1,22 +1,21 @@
 /**
  * Entrypoint detection across ecosystems: package.json entry targets for the
- * JS/TS ecosystem, plus Python entry scripts - `__main__.py` files (module
- * entrypoints) and modules carrying a top-level `__name__ == "__main__"`
- * guard (run-directly scripts). Only targets that resolve to a discovered
- * module are entrypoints; externals are ignored.
+ * JS/TS ecosystem, plus whatever each language resolver flags as entrypoints
+ * (Python's `__main__.py` files and `__name__ == "__main__"` entry scripts).
+ * Only targets that resolve to a discovered module are entrypoints;
+ * externals are ignored.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { basename } from "node:path/posix";
-import { resolveEntrypointModule } from "./resolver-registry.js";
-
-/** The file name that makes its directory runnable with `python -m`. */
-const PYTHON_MODULE_ENTRYPOINT = "__main__.py";
+import {
+  getResolverForPath,
+  resolveEntrypointModule,
+} from "./resolver-registry.js";
 
 /**
  * Returns the sorted module ids flagged as entrypoints: package.json targets
- * for JS/TS repos plus Python `__main__.py` files and entry scripts. A
- * missing or malformed package.json yields no metadata entrypoints rather
+ * for JS/TS repos plus each resolver's path- and AST-based entrypoint rules.
+ * A missing or malformed package.json yields no metadata entrypoints rather
  * than aborting the scan.
  */
 export function findEntrypoints(
@@ -35,7 +34,8 @@ export function findEntrypoints(
     }
   }
   for (const path of modulePaths) {
-    if (basename(path) === PYTHON_MODULE_ENTRYPOINT) {
+    const resolver = getResolverForPath(path);
+    if (resolver?.isEntrypointPath?.(path) === true) {
       entrypoints.add(path);
     }
   }

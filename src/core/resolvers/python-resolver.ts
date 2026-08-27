@@ -2,14 +2,15 @@
  * Python resolver: turns `import` and `from ... import` statements into
  * import references, ties each source file to the vendored Python grammar,
  * resolves references to module ids through the package module map, and
- * flags entry scripts carrying a top-level `__name__ == "__main__"` guard.
+ * owns Python entrypoint detection: `__main__.py` files (module entrypoints)
+ * and scripts carrying a top-level `__name__ == "__main__"` guard.
  *
  * Resolution rules are deliberately simple and statement-shaped:
  * - `import a.b` resolves to `a/b.py` or `a/b/__init__.py`; anything not in
  *   the module map (stdlib, third-party, broken paths) resolves to null.
  * - `from a.b import x` resolves to the from-module `a.b`, never the bound
- *   name `x` - the statement's dependency is the module whose namespace is
- *   consumed.
+ *   name `x` - even when `x` names a submodule of that package, the edge
+ *   stays on the package init file whose namespace is consumed.
  * - `from . import x` (pure-relative) is the one exception: the bound name
  *   IS the submodule being imported, so it resolves to `x.py` under the
  *   current package directory (the grammar gives the same shape as
@@ -17,30 +18,28 @@
  * - Relative specifiers walk up one package level per leading dot.
  */
 import type { Node } from "web-tree-sitter";
-import { dirname, join } from "node:path/posix";
+import { basename, dirname, join } from "node:path/posix";
 import type {
   ImportReference,
   LanguageResolver,
 } from "../resolver-registry.js";
+import { stringLiteralContent } from "./string-literal.js";
 
 const EXTENSIONS = [".py"] as const;
 const GRAMMAR_FILE = "tree-sitter-python.wasm";
 /** The identifier and value a top-level guard must compare to be an entry script. */
 const MAIN_GUARD_NAME = "__name__";
 const MAIN_GUARD_VALUE = "__main__";
+/** The file name that makes its directory runnable with `python -m`. */
+const PYTHON_MODULE_ENTRYPOINT = "__main__.py";
 
-/** Strips surrounding quotes from a string literal, or null when malformed. */
-function stringContent(node: Node): string | null {
-  const raw = node.text;
-  if (raw.length < 2) {
-    return null;
-  }
-  const quote = raw[0];
-  if ((quote === '"' || quote === "'") && raw.endsWith(quote)) {
-    return raw.slice(1, -1);
-  }
-  return null;
-}
+/** Tree-sitter node types that name modules, repeated across the extractors. */
+const IMPORT_STATEMENT = "import_statement";
+const IMPORT_FROM_STATEMENT = "import_from_statement";
+const DOTTED_NAME = "dotted_name";
+const RELATIVE_IMPORT = "relative_import";
+const ALIASED_IMPORT = "aliased_import";
+const IF_STATEMENT = "if_statement";
 
 /**
  * Extracts the from-module specifier of an `import_from_statement`: its
@@ -52,7 +51,7 @@ function fromModuleSpecifier(node: Node): string | null {
   if (first === undefined) {
     return null;
   }
-  if (first.type === "relative_import" || first.type === "dotted_name") {
+  if (first.type === RELATIVE_IMPORT || first.type === DOTTED_NAME) {
     return first.text;
   }
   return null;
@@ -63,11 +62,11 @@ function importedNames(node: Node): string[] {
   return node.namedChildren
     .slice(1)
     .map((child) => {
-      if (child.type === "dotted_name") {
+      if (child.type === DOTTED_NAME) {
         return child.text;
       }
       // An aliased_import like `x as y` still binds the original name `x`.
-      if (child.type === "aliased_import") {
+      if (child.type === ALIASED_IMPORT) {
         return child.namedChildren[0]?.text ?? null;
       }
       return null;
@@ -104,11 +103,11 @@ function fromImportReference(node: Node): ImportReference[] {
 function extractImports(root: Node): ImportReference[] {
   const references: ImportReference[] = [];
   const visit = (node: Node): void => {
-    if (node.type === "import_statement") {
-      for (const dotted of node.descendantsOfType("dotted_name")) {
+    if (node.type === IMPORT_STATEMENT) {
+      for (const dotted of node.descendantsOfType(DOTTED_NAME)) {
         references.push({ specifier: dotted.text, kind: "import" });
       }
-    } else if (node.type === "import_from_statement") {
+    } else if (node.type === IMPORT_FROM_STATEMENT) {
       references.push(...fromImportReference(node));
     }
     for (const child of node.namedChildren) {
@@ -183,7 +182,9 @@ function isMainGuard(node: Node): boolean {
     .some((identifier) => identifier.text === MAIN_GUARD_NAME);
   const hasGuardValue = condition
     .descendantsOfType("string")
-    .some((stringNode) => stringContent(stringNode) === MAIN_GUARD_VALUE);
+    .some(
+      (stringNode) => stringLiteralContent(stringNode) === MAIN_GUARD_VALUE
+    );
   return hasGuardName && hasGuardValue;
 }
 
@@ -193,8 +194,13 @@ function isMainGuard(node: Node): boolean {
  */
 function isEntryScript(root: Node): boolean {
   return root.namedChildren.some(
-    (node) => node.type === "if_statement" && isMainGuard(node)
+    (node) => node.type === IF_STATEMENT && isMainGuard(node)
   );
+}
+
+/** True when the module path is a `__main__.py` file: a module entrypoint. */
+function isEntrypointPath(path: string): boolean {
+  return basename(path) === PYTHON_MODULE_ENTRYPOINT;
 }
 
 export const PYTHON_RESOLVER: LanguageResolver = {
@@ -215,4 +221,5 @@ export const PYTHON_RESOLVER: LanguageResolver = {
       : resolveDottedModule(reference.specifier, modulePaths);
   },
   isEntryScript,
+  isEntrypointPath,
 };

@@ -26,6 +26,8 @@ export function scan(fixture: string, extraArgs: string[] = []) {
 export function scanReport(fixture: string): ReportContract {
   const result = scan(fixture);
   expect(result.status, result.stderr).toBe(0);
+  // Report-contract parsing is a trust boundary: the subprocess just emitted
+  // this JSON from the same build, so casting its shape is safe here.
   return JSON.parse(result.stdout) as ReportContract;
 }
 

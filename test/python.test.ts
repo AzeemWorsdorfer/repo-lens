@@ -32,8 +32,9 @@ describe("repo-lens python resolver", () => {
 
   it("resolves import, from-import, and relative imports into edges, excluding externals", () => {
     const report = scanReport(PYTHON);
-    // os and re are externals and must not become edges; all other
-    // statements resolve through the package module map.
+    // os and re are externals and must not become edges; absolute
+    // from-imports resolve to the from-module (src/__init__.py, never the
+    // bound name), while pure-relative from-imports resolve the submodule.
     expect(report.edges).toEqual([
       { source: "__main__.py", target: "app.py", kind: "import-from" },
       { source: "app.py", target: "src/core.py", kind: "import-from" },
@@ -42,6 +43,11 @@ describe("repo-lens python resolver", () => {
       { source: "src/core.py", target: "src/models.py", kind: "import-from" },
       { source: "src/core.py", target: "src/utils.py", kind: "import" },
       { source: "src/models.py", target: "src/config.py", kind: "import-from" },
+      {
+        source: "src/web/server.py",
+        target: "src/__init__.py",
+        kind: "import-from",
+      },
       {
         source: "src/web/server.py",
         target: "src/core.py",
@@ -55,7 +61,7 @@ describe("repo-lens python resolver", () => {
     ]);
     expect(report.meta.counts).toMatchObject({
       modules: 10,
-      edges: 9,
+      edges: 10,
       cycles: 0,
     });
   });
