@@ -8,7 +8,7 @@ from .models import Record
 
 def analyze(record: Record) -> str:
     """Returns a decorated label for a record name."""
-    prefix = os.getenv("PREFIX", DEFAULT_PREFIX)
+    prefix = os.getenv("PREFIX") or DEFAULT_PREFIX
     if prefix:
         return f"{prefix}:{src.utils.slugify(record.name)}"
     return record.name

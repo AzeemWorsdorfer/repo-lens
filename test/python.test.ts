@@ -76,12 +76,18 @@ describe("repo-lens python resolver", () => {
 
   it("counts python decision nodes in cyclomatic complexity", () => {
     const report = scanReport(PYTHON);
-    // models.py: one if_statement plus one conditional_expression (ternary).
+    // models.py: one if_statement plus a boolean `and` plus an elif_clause.
     const models = report.modules.find(
       (module) => module.id === "src/models.py"
     );
-    expect(models?.complexity).toBe(3);
-    // utils.py has no decision points.
+    expect(models?.complexity).toBe(4);
+    // core.py: a boolean `or` fallback plus one if_statement.
+    const core = report.modules.find((module) => module.id === "src/core.py");
+    expect(core?.complexity).toBe(3);
+    // app.py: the entry guard plus one conditional_expression (ternary).
+    const app = report.modules.find((module) => module.id === "app.py");
+    expect(app?.complexity).toBe(3);
+    // utils.py: the generator `if` is not a statement, so no decision points.
     const utils = report.modules.find((module) => module.id === "src/utils.py");
     expect(utils?.complexity).toBe(1);
     expect(utils?.coupling).toBe(1);

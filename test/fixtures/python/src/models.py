@@ -12,6 +12,8 @@ class Record:
 
     def classify(self) -> str:
         """Classifies the record value into a label."""
-        if self.value > 0:
+        if self.value > 0 and self.name:
             return "positive"
-        return "negative" if self.value < 0 else "zero"
+        elif self.value < 0:
+            return "negative"
+        return "zero"
