@@ -2,11 +2,11 @@
 
 > Understand any codebase in minutes. One command. One interactive report.
 
-**Status: in development** - the JSON graph report is implemented (`scan --emit json`); the HTML viewer, remaining language resolvers, LLM layer, and MCP server are planned (see roadmap).
+**Status: in development** - the JSON graph report is implemented (`scan --emit json`); the HTML viewer, remaining language resolvers, LLM layer, and the AXI agent CLI are planned (see roadmap).
 
 `repo-lens` is a CLI that scans a repository and produces a single self-contained, interactive HTML report visualizing how the code works: the module dependency graph, dependency cycles, a folder treemap, a complexity-vs-coupling scatter, and - when an LLM is configured - an architecture overview with flow diagrams for key entry points.
 
-It is built to be **harness-agnostic**: a pure CLI with a machine-readable JSON contract, plus a stdio MCP server, so a human's terminal, a CI pipeline, and any AI coding harness (pi, Claude Code, Cursor, Copilot) all drive the identical capability.
+It is built to be **harness-agnostic**: an AXI-native CLI (Agent eXperience Interface - token-efficient output, query subcommands, agent-friendly defaults) with a machine-readable JSON contract, so a human's terminal, a CI pipeline, and any AI coding harness (pi, Claude Code, Cursor, Copilot) all drive the identical capability through the shell.
 
 ## How it works
 
@@ -31,15 +31,25 @@ TypeScript / JavaScript, Python, Go, Java, Rust, and C/C++ - each with a pluggab
 
 ## CLI
 
-The scan subcommand is live for the JSON report; `html`, `serve`, and `mcp` are planned.
+The scan subcommand is live for the JSON report; `html`, `serve`, and the query subcommands are planned.
 
 ```
-repo-lens scan [path]      # scan a repository; prints the JSON report
-  --emit json|html         # json = machine-readable graph report (html planned)
-  --output <file>          # write the report to a file instead of stdout
-repo-lens serve [path]     # local viewer for large reports (planned)
-repo-lens mcp              # stdio MCP server (scan/summarize/query-graph) (planned)
+repo-lens                        # repo overview dashboard (content first)
+repo-lens scan [path]            # scan a repository
+  --emit json|toon|html          # json = canonical machine contract; toon = token-efficient
+                                 # agent rendering; html = interactive report (planned)
+  --output <file>                # write the report to a file instead of stdout
+repo-lens top --metric <m>       # highest complexity/coupling/centrality modules
+repo-lens module <id>            # one module: deps, dependents, metrics, summary
+repo-lens graph --deps-of <id>   # a module's neighborhood (also --dependents-of/--neighborhood)
+repo-lens cycles                 # dependency cycles, largest first
+repo-lens entrypoints            # entry modules
+repo-lens search <query>         # module id/path search
+repo-lens summarize [path]       # LLM pass (planned)
+repo-lens serve [path]           # local viewer for large reports (planned)
 ```
+
+Query subcommands accept `--report <file>` to answer against a previously scanned report without re-scanning. Agent-facing output uses TOON by default (lossless, token-efficient); `--emit json` stays the canonical byte-identical contract.
 
 LLM configuration is provider-agnostic via environment variables:
 `REPO_LENS_LLM_PROVIDER` (openai-compatible | anthropic | ollama), `REPO_LENS_LLM_BASE_URL`, and the standard `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`. Nothing is ever sent to a provider unless you configure one.
@@ -52,8 +62,10 @@ LLM configuration is provider-agnostic via environment variables:
 - [ ] Python, Go, Java, Rust, C/C++ resolvers
 - [ ] Interactive HTML report
 - [ ] LLM understanding layer
-- [ ] MCP stdio server
-- [ ] CLI polish, docs, packaging
+- [ ] AXI output layer (TOON rendering, ticket 12)
+- [ ] Query subcommands + `--report` (ticket 13)
+- [ ] Content-first home + contextual disclosure (ticket 14)
+- [ ] CLI polish, docs, packaging, agent skill
 
 ## Development
 
