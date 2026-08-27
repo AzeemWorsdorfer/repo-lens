@@ -6,10 +6,11 @@
  */
 import { dirname, join, normalize } from "node:path/posix";
 import { TYPE_SCRIPT_RESOLVER } from "./resolvers/typescript-resolver.js";
+import { PYTHON_RESOLVER } from "./resolvers/python-resolver.js";
 import type { Node } from "web-tree-sitter";
 
 /** How an import/require reference was written, used as the edge kind. */
-export type ImportKind = "import" | "require";
+export type ImportKind = "import" | "require" | "import-from";
 
 /** A raw import/require reference extracted from the AST of a source file. */
 export interface ImportReference {
@@ -38,10 +39,25 @@ export interface LanguageResolver {
     fromModule: string,
     modulePaths: ReadonlySet<string>
   ): string | null;
+  /**
+   * True when a parsed module is an entry script for its ecosystem (e.g. a
+   * Python `__name__ == "__main__"` guard). Absent for languages whose
+   * entrypoints are found by metadata only.
+   */
+  isEntryScript?(root: Node): boolean;
+  /**
+   * True when a module path is an entrypoint for its ecosystem without
+   * needing a parse (e.g. Python's `__main__.py`). Absent for languages
+   * whose entrypoints are found by metadata or AST only.
+   */
+  isEntrypointPath?(path: string): boolean;
 }
 
 /** The ordered set of resolvers, newest languages appended here. */
-export const RESOLVERS: readonly LanguageResolver[] = [TYPE_SCRIPT_RESOLVER];
+export const RESOLVERS: readonly LanguageResolver[] = [
+  TYPE_SCRIPT_RESOLVER,
+  PYTHON_RESOLVER,
+];
 
 /** Every extension across all resolvers, sorted, for cross-language lookups. */
 export const ALL_EXTENSIONS: readonly string[] = [

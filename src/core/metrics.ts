@@ -16,10 +16,17 @@ const DECISION_TYPES: string[] = [
   "switch_case",
   "catch_clause",
   "ternary_expression",
+  // Python equivalents of the JS/TS nodes above, per ADR 0002: except is
+  // catch, match/case is switch, elif is an extra branch, and the ternary is
+  // a conditional expression.
+  "except_clause",
+  "case_clause",
+  "elif_clause",
+  "conditional_expression",
 ];
 
-/** Binary operators that short-circuit and count as a decision point. */
-const BOOLEAN_OPERATORS = new Set(["&&", "||", "??"]);
+/** Operators that short-circuit and count as a decision point. */
+const BOOLEAN_OPERATORS = new Set(["&&", "||", "??", "and", "or"]);
 
 /** PageRank damping factor, matching the pinned metric definition. */
 const DAMPING = 0.85;
@@ -34,7 +41,12 @@ const PAGE_RANK_ITERATIONS = 100;
 export function cyclomaticComplexity(root: Node): number {
   let complexity = 1;
   complexity += root.descendantsOfType(DECISION_TYPES).length;
-  for (const node of root.descendantsOfType("binary_expression")) {
+  // JS/TS parse short-circuits as binary_expression; Python parses them as
+  // boolean_operator nodes, so both node shapes are scanned.
+  for (const node of root.descendantsOfType([
+    "binary_expression",
+    "boolean_operator",
+  ])) {
     const operator = node.childForFieldName("operator")?.text;
     if (operator !== undefined && BOOLEAN_OPERATORS.has(operator)) {
       complexity += 1;

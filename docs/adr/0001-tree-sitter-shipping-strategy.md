@@ -39,4 +39,6 @@ portable and conflict-free.
   generated files" rule, refreshed by a pinned build/download step.
 - Ticket 01 spike pins the exact grammar versions and the vendoring path, and
   confirms the parser round-trips a fixture before any resolver work proceeds.
+- Ticket 02 vendors the Python grammar at v0.25.0 (the prebuilt release asset
+  from `tree-sitter/tree-sitter-python`), matching the same WASM runtime.
 - `grammars/` must be added to `package.json` `files` when the files land.

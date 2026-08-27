@@ -59,7 +59,8 @@ LLM configuration is provider-agnostic via environment variables:
 - [x] Spec (`.scratch/repo-lens/SPEC.md`)
 - [x] Ticket breakdown (`.scratch/repo-lens/issues/`)
 - [x] Tracer bullet: scan a TypeScript repo into a deterministic JSON report
-- [ ] Python, Go, Java, Rust, C/C++ resolvers
+- [x] Python resolver (imports, relative imports, entry scripts, `__main__`)
+- [ ] Go, Java, Rust, C/C++ resolvers
 - [ ] Interactive HTML report
 - [ ] LLM understanding layer
 - [ ] AXI output layer (TOON rendering, ticket 12)

@@ -10,29 +10,14 @@ import {
   type ImportReference,
   type LanguageResolver,
 } from "../resolver-registry.js";
+import { stringLiteralContent } from "./string-literal.js";
 
 const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
-
-/** Extracts a string specifier (stripping surrounding quotes) from a string node. */
-function stringSpecifier(node: Node): string | null {
-  const raw = node.text;
-  if (raw.length < 2) {
-    return null;
-  }
-  const quote = raw[0];
-  if (
-    (quote === '"' || quote === "'" || quote === "`") &&
-    raw.endsWith(quote)
-  ) {
-    return raw.slice(1, -1);
-  }
-  return null;
-}
 
 /** Extracts the source specifier from an `import` statement. */
 function importSpecifier(node: Node): string | null {
   const source = node.childForFieldName("source");
-  return source === null ? null : stringSpecifier(source);
+  return source === null ? null : stringLiteralContent(source);
 }
 
 /** Extracts the argument specifier from a `require("...")` call expression. */
@@ -50,7 +35,7 @@ function requireSpecifier(node: Node): string | null {
     return null;
   }
   const first = args.namedChildren[0];
-  return first === undefined ? null : stringSpecifier(first);
+  return first === undefined ? null : stringLiteralContent(first);
 }
 
 /**
