@@ -1,31 +1,42 @@
 /**
- * Entrypoint detection for the JavaScript/TypeScript ecosystem: reads the
- * repository's package.json and flags whichever source modules its `main`,
- * `module`, `bin`, and `exports` fields point at. Only targets that resolve
- * to a discovered module are entrypoints; externals are ignored.
+ * Entrypoint detection across ecosystems: package.json entry targets for the
+ * JS/TS ecosystem, plus Python entry scripts - `__main__.py` files (module
+ * entrypoints) and modules carrying a top-level `__name__ == "__main__"`
+ * guard (run-directly scripts). Only targets that resolve to a discovered
+ * module are entrypoints; externals are ignored.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { basename } from "node:path/posix";
 import { resolveEntrypointModule } from "./resolver-registry.js";
 
+/** The file name that makes its directory runnable with `python -m`. */
+const PYTHON_MODULE_ENTRYPOINT = "__main__.py";
+
 /**
- * Returns the sorted module ids flagged as entrypoints by package.json, or an
- * empty list when the repo has no package.json. A missing or malformed
- * package.json yields no entrypoints rather than aborting the scan.
+ * Returns the sorted module ids flagged as entrypoints: package.json targets
+ * for JS/TS repos plus Python `__main__.py` files and entry scripts. A
+ * missing or malformed package.json yields no metadata entrypoints rather
+ * than aborting the scan.
  */
 export function findEntrypoints(
   root: string,
-  modulePaths: ReadonlySet<string>
+  modulePaths: ReadonlySet<string>,
+  entryScriptModules: ReadonlySet<string> = new Set()
 ): string[] {
+  const entrypoints = new Set<string>(entryScriptModules);
   const packageJson = readPackageJson(root);
-  if (packageJson === null) {
-    return [];
+  if (packageJson !== null) {
+    for (const target of entryTargets(packageJson)) {
+      const moduleId = resolveEntrypointModule(target, modulePaths);
+      if (moduleId !== null) {
+        entrypoints.add(moduleId);
+      }
+    }
   }
-  const entrypoints = new Set<string>();
-  for (const target of entryTargets(packageJson)) {
-    const moduleId = resolveEntrypointModule(target, modulePaths);
-    if (moduleId !== null) {
-      entrypoints.add(moduleId);
+  for (const path of modulePaths) {
+    if (basename(path) === PYTHON_MODULE_ENTRYPOINT) {
+      entrypoints.add(path);
     }
   }
   return [...entrypoints].sort();

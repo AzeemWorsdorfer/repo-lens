@@ -10,7 +10,7 @@ import { discoverSourceFiles } from "./discovery.js";
 import { parseSource } from "./parser.js";
 import { cyclomaticComplexity, computePageRank } from "./metrics.js";
 import { findCycles } from "./cycle.js";
-import { findEntrypoints } from "./package-entries.js";
+import { findEntrypoints } from "./entrypoints.js";
 import {
   getResolverForPath,
   type ImportReference,
@@ -55,6 +55,7 @@ export async function analyze(root: string): Promise<Analysis> {
 
   const drafts: DraftModule[] = [];
   const importsByModule = new Map<string, readonly ImportReference[]>();
+  const entryScripts = new Set<string>();
   for (const file of files) {
     const resolver = getResolverForPath(file);
     if (resolver === null) {
@@ -62,6 +63,9 @@ export async function analyze(root: string): Promise<Analysis> {
     }
     const content = readFileSync(join(absolute, file), "utf8");
     const rootNode = await parseSource(content, resolver.grammarFileFor(file));
+    if (resolver.isEntryScript?.(rootNode) === true) {
+      entryScripts.add(file);
+    }
     drafts.push({
       id: file,
       path: file,
@@ -96,7 +100,7 @@ export async function analyze(root: string): Promise<Analysis> {
   edges.sort(compareEdges);
   const moduleIds = drafts.map((draft) => draft.id);
   const cycles = findCycles(moduleIds, depsByModule);
-  const entrypoints = findEntrypoints(absolute, modulePaths);
+  const entrypoints = findEntrypoints(absolute, modulePaths, entryScripts);
   const pageRank = computePageRank(moduleIds, depsByModule);
 
   return {
