@@ -86,7 +86,9 @@ export async function analyze(root: string): Promise<Analysis> {
     }
     const dependencySet = new Set<string>();
     for (const reference of importsByModule.get(draft.id) ?? []) {
-      const target = resolver.resolveImport(reference, draft.id, modulePaths);
+      const target = resolver.resolveImport(reference, draft.id, modulePaths, {
+        root: absolute,
+      });
       if (target === null || target === draft.id) {
         continue;
       }
