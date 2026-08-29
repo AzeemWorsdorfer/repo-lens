@@ -7,10 +7,21 @@
 import { dirname, join, normalize } from "node:path/posix";
 import { TYPE_SCRIPT_RESOLVER } from "./resolvers/typescript-resolver.js";
 import { PYTHON_RESOLVER } from "./resolvers/python-resolver.js";
+import { GO_RESOLVER } from "./resolvers/go-resolver.js";
 import type { Node } from "web-tree-sitter";
 
 /** How an import/require reference was written, used as the edge kind. */
 export type ImportKind = "import" | "require" | "import-from";
+
+/**
+ * Per-scan context handed to resolvers when a language needs repo-level
+ * metadata that the module map cannot express, such as go.mod for Go's
+ * module path. Absent for languages that resolve purely from the AST.
+ */
+export interface ResolveContext {
+  /** Absolute path of the scan root, e.g. for locating go.mod. */
+  readonly root: string;
+}
 
 /** A raw import/require reference extracted from the AST of a source file. */
 export interface ImportReference {
@@ -33,11 +44,16 @@ export interface LanguageResolver {
   grammarFileFor(path: string): string;
   /** Extracts import/require references from a parsed root node. */
   extractImports(root: Node): readonly ImportReference[];
-  /** Resolves a reference to a module id, or null for externals/unresolvable. */
+  /**
+   * Resolves a reference to a module id, or null for externals/unresolvable.
+   * `context` is provided by the scan when a resolver needs the scan root
+   * (e.g. Go's go.mod lookup); resolvers that do not need it omit the param.
+   */
   resolveImport(
     reference: ImportReference,
     fromModule: string,
-    modulePaths: ReadonlySet<string>
+    modulePaths: ReadonlySet<string>,
+    context?: ResolveContext
   ): string | null;
   /**
    * True when a parsed module is an entry script for its ecosystem (e.g. a
@@ -57,6 +73,7 @@ export interface LanguageResolver {
 export const RESOLVERS: readonly LanguageResolver[] = [
   TYPE_SCRIPT_RESOLVER,
   PYTHON_RESOLVER,
+  GO_RESOLVER,
 ];
 
 /** Every extension across all resolvers, sorted, for cross-language lookups. */

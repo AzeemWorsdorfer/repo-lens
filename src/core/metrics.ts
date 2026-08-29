@@ -23,6 +23,12 @@ const DECISION_TYPES: string[] = [
   "case_clause",
   "elif_clause",
   "conditional_expression",
+  // Go equivalents per ADR 0002: switch and select branches count one per
+  // case, matching how JS/TS count each switch_case.
+  "expression_case",
+  "type_case",
+  "communication_case",
+  "default_case",
 ];
 
 /** Operators that short-circuit and count as a decision point. */
