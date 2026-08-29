@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Tracer bullet: scan a TS/JS repo into a deterministic JSON report
 
-**Status:** ready-for-agent
+**Status:** done — shipped in PR #5 (`feat/03-go-resolver`, merge `c4f0a83`), merged to `main` 2026-08-27
 
-- [ ] Go resolver registered in the language registry
-- [ ] Go fixture report shows correct modules and edges per fixture ground truth
-- [ ] Entrypoint detection flags Go main packages
-- [ ] Subprocess seam tests prove graph accuracy for the fixture
+- [x] Go resolver registered in the language registry
+- [x] Go fixture report shows correct modules and edges per fixture ground truth
+- [x] Entrypoint detection flags Go main packages
+- [x] Subprocess seam tests prove graph accuracy for the fixture
