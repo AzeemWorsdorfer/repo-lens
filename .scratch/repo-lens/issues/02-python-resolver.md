@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Tracer bullet: scan a TS/JS repo into a deterministic JSON report
 
-**Status:** ready-for-agent
+**Status:** done — shipped in PR #4 (`feat/02-python-resolver`, merge `2326a32`), merged to `main` 2026-08-27
 
-- [ ] Python resolver registered in the language registry
-- [ ] Python fixture report shows correct modules and edges per fixture ground truth
-- [ ] Entrypoint detection flags Python entry scripts
-- [ ] Subprocess seam tests prove graph accuracy for the fixture
+- [x] Python resolver registered in the language registry
+- [x] Python fixture report shows correct modules and edges per fixture ground truth
+- [x] Entrypoint detection flags Python entry scripts
+- [x] Subprocess seam tests prove graph accuracy for the fixture
