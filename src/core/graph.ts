@@ -55,6 +55,7 @@ export async function analyze(root: string): Promise<Analysis> {
 
   const drafts: DraftModule[] = [];
   const importsByModule = new Map<string, readonly ImportReference[]>();
+  const moduleMetadata = new Map<string, unknown>();
   const entryScripts = new Set<string>();
   for (const file of files) {
     const resolver = getResolverForPath(file);
@@ -63,6 +64,10 @@ export async function analyze(root: string): Promise<Analysis> {
     }
     const content = readFileSync(join(absolute, file), "utf8");
     const rootNode = await parseSource(content, resolver.grammarFileFor(file));
+    const metadata = resolver.moduleMetadataFor?.(rootNode);
+    if (metadata !== undefined) {
+      moduleMetadata.set(file, metadata);
+    }
     if (resolver.isEntryScript?.(rootNode) === true) {
       entryScripts.add(file);
     }
@@ -78,7 +83,9 @@ export async function analyze(root: string): Promise<Analysis> {
   }
 
   const edges: Edge[] = [];
+  const emittedEdges = new Set<string>();
   const depsByModule = new Map<string, string[]>();
+  const resolveContext = { root: absolute, moduleMetadata };
   for (const draft of drafts) {
     const resolver = getResolverForPath(draft.id);
     if (resolver === null) {
@@ -86,14 +93,29 @@ export async function analyze(root: string): Promise<Analysis> {
     }
     const dependencySet = new Set<string>();
     for (const reference of importsByModule.get(draft.id) ?? []) {
-      const target = resolver.resolveImport(reference, draft.id, modulePaths, {
-        root: absolute,
-      });
-      if (target === null || target === draft.id) {
-        continue;
+      const resolved = resolver.resolveImport(
+        reference,
+        draft.id,
+        modulePaths,
+        resolveContext
+      );
+      const targets =
+        resolved === null
+          ? []
+          : typeof resolved === "string"
+            ? [resolved]
+            : resolved;
+      for (const target of targets) {
+        if (target === draft.id) {
+          continue;
+        }
+        dependencySet.add(target);
+        const edgeKey = `${draft.id}\u0000${target}\u0000${reference.kind}`;
+        if (!emittedEdges.has(edgeKey)) {
+          emittedEdges.add(edgeKey);
+          edges.push({ source: draft.id, target, kind: reference.kind });
+        }
       }
-      dependencySet.add(target);
-      edges.push({ source: draft.id, target, kind: reference.kind });
     }
     draft.deps = [...dependencySet].sort();
     depsByModule.set(draft.id, draft.deps);
