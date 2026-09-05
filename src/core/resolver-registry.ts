@@ -8,6 +8,7 @@ import { dirname, join, normalize } from "node:path/posix";
 import { TYPE_SCRIPT_RESOLVER } from "./resolvers/typescript-resolver.js";
 import { PYTHON_RESOLVER } from "./resolvers/python-resolver.js";
 import { GO_RESOLVER } from "./resolvers/go-resolver.js";
+import { JAVA_RESOLVER } from "./resolvers/java-resolver.js";
 import type { Node } from "web-tree-sitter";
 
 /** How an import/require reference was written, used as the edge kind. */
@@ -74,6 +75,7 @@ export const RESOLVERS: readonly LanguageResolver[] = [
   TYPE_SCRIPT_RESOLVER,
   PYTHON_RESOLVER,
   GO_RESOLVER,
+  JAVA_RESOLVER,
 ];
 
 /** Every extension across all resolvers, sorted, for cross-language lookups. */

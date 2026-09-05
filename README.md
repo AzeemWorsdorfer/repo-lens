@@ -61,7 +61,8 @@ LLM configuration is provider-agnostic via environment variables:
 - [x] Tracer bullet: scan a TypeScript repo into a deterministic JSON report
 - [x] Python resolver (imports, relative imports, entry scripts, `__main__`)
 - [x] Go resolver (imports, `main()` entrypoints)
-- [ ] Java, Rust, C/C++ resolvers
+- [x] Java resolver
+- [ ] Rust, C/C++ resolvers
 - [ ] Interactive HTML report
 - [ ] LLM understanding layer
 - [ ] AXI output layer (TOON rendering, ticket 12)

@@ -43,4 +43,6 @@ portable and conflict-free.
   from `tree-sitter/tree-sitter-python`), matching the same WASM runtime.
 - Ticket 03 vendors the Go grammar at v0.25.0 (the prebuilt release asset from
   `tree-sitter/tree-sitter-go`), matching the same WASM runtime.
+- Ticket 04 vendors the Java grammar at v0.23.5 (the npm package's prebuilt
+  WASM asset), matching the same WASM runtime.
 - `grammars/` must be added to `package.json` `files` when the files land.
