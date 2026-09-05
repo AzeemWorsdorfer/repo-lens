@@ -134,7 +134,7 @@ function buildPackageMap(
   const types = new Map<string, string | null>();
   const packageCandidates = new Map<string, Set<string>>();
   const javaPaths = [...modulePaths]
-    .filter((path) => path.endsWith(JAVA_EXTENSION))
+    .filter((path) => path.toLowerCase().endsWith(JAVA_EXTENSION))
     .sort();
 
   for (const path of javaPaths) {

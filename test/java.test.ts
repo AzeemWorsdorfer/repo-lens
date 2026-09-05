@@ -13,16 +13,32 @@ const JAVA = fileURLToPath(new URL("./fixtures/java", import.meta.url));
 describe("repo-lens Java resolver", () => {
   it("discovers Java source files and reports them as modules", () => {
     const report = scanReport(JAVA);
-    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 7 }]);
+    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 8 }]);
     expect(report.modules.map((module) => module.id)).toEqual([
       "src/main/java/com/example/app/Main.java",
       "src/main/java/com/example/app/SeverityPrinter.java",
       "src/main/java/com/example/model/Severity.java",
       "src/main/java/com/example/store/Store.java",
       "src/main/java/com/example/store/StoreHelper.java",
+      "src/main/java/com/example/uppercase/UpperCase.JAVA",
       "src/main/java/definitions/Level.java",
       "src/test/java/com/example/store/StoreTest.java",
     ]);
+  });
+
+  it("discovers uppercase Java extensions and resolves their declared type", () => {
+    const report = scanReport(JAVA);
+    expect(
+      report.modules.find(
+        (module) =>
+          module.id === "src/main/java/com/example/uppercase/UpperCase.JAVA"
+      )?.language
+    ).toBe("java");
+    expect(report.edges).toContainEqual({
+      source: "src/main/java/com/example/app/SeverityPrinter.java",
+      target: "src/main/java/com/example/uppercase/UpperCase.JAVA",
+      kind: "import",
+    });
   });
 
   it("resolves local Java imports through package and class declarations", () => {
@@ -51,6 +67,11 @@ describe("repo-lens Java resolver", () => {
         kind: "import",
       },
       {
+        source: "src/main/java/com/example/app/SeverityPrinter.java",
+        target: "src/main/java/com/example/uppercase/UpperCase.JAVA",
+        kind: "import",
+      },
+      {
         source: "src/main/java/com/example/store/Store.java",
         target: "src/main/java/com/example/model/Severity.java",
         kind: "import",
@@ -67,8 +88,8 @@ describe("repo-lens Java resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 7,
-      edges: 7,
+      modules: 8,
+      edges: 8,
       cycles: 0,
     });
   });
