@@ -1,7 +1,7 @@
 package com.example.app;
 
 import com.example.model.*;
-import com.example.store.Store;
+import /* store type */ com.example.store.Store;
 import java.util.List;
 import static com.example.model.Severity.*;
 

@@ -13,10 +13,12 @@ const JAVA = fileURLToPath(new URL("./fixtures/java", import.meta.url));
 describe("repo-lens Java resolver", () => {
   it("discovers Java source files and reports them as modules", () => {
     const report = scanReport(JAVA);
-    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 8 }]);
+    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 10 }]);
     expect(report.modules.map((module) => module.id)).toEqual([
       "src/main/java/com/example/app/Main.java",
+      "src/main/java/com/example/app/OuterUser.java",
       "src/main/java/com/example/app/SeverityPrinter.java",
+      "src/main/java/com/example/model/Outer.java",
       "src/main/java/com/example/model/Severity.java",
       "src/main/java/com/example/store/Store.java",
       "src/main/java/com/example/store/StoreHelper.java",
@@ -62,6 +64,11 @@ describe("repo-lens Java resolver", () => {
         kind: "import",
       },
       {
+        source: "src/main/java/com/example/app/OuterUser.java",
+        target: "src/main/java/com/example/model/Outer.java",
+        kind: "import",
+      },
+      {
         source: "src/main/java/com/example/app/SeverityPrinter.java",
         target: "src/main/java/com/example/model/Severity.java",
         kind: "import",
@@ -88,8 +95,8 @@ describe("repo-lens Java resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 8,
-      edges: 8,
+      modules: 10,
+      edges: 9,
       cycles: 0,
     });
   });

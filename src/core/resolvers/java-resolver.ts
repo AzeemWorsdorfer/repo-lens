@@ -58,15 +58,20 @@ interface JavaPackageMap {
 function extractImports(root: Node): ImportReference[] {
   const references: ImportReference[] = [];
   for (const declaration of root.descendantsOfType(IMPORT_DECLARATION)) {
-    const match = declaration.text.match(/^import\s+(static\s+)?(.+?)\s*;\s*$/);
-    const specifier = match?.[2]?.trim();
-    if (specifier !== undefined && specifier !== "") {
-      references.push({
-        specifier,
-        kind: "import",
-        isStatic: match?.[1] !== undefined,
-      });
+    const path = declaration.namedChildren.find(
+      (child) => child.type === "identifier" || child.type === "scoped_identifier"
+    );
+    if (path === undefined) {
+      continue;
     }
+    const hasWildcard = declaration.children.some(
+      (child) => child.type === "asterisk"
+    );
+    references.push({
+      specifier: `${path.text}${hasWildcard ? ".*" : ""}`,
+      kind: "import",
+      isStatic: declaration.children.some((child) => child.type === "static"),
+    });
   }
   return references;
 }
@@ -243,8 +248,23 @@ function collectTypeNames(
     TYPE_BODIES.has(child.type)
   );
   for (const child of body?.namedChildren ?? []) {
-    if (TYPE_DECLARATIONS.has(child.type)) {
-      collectTypeNames(child, qualifiedName, names);
+    collectMemberTypeNames(child, qualifiedName, names);
+  }
+}
+
+/** Traverses enum declaration wrappers to find importable member types. */
+function collectMemberTypeNames(
+  node: Node,
+  enclosingName: string,
+  names: string[]
+): void {
+  if (TYPE_DECLARATIONS.has(node.type)) {
+    collectTypeNames(node, enclosingName, names);
+    return;
+  }
+  if (node.type === "enum_body_declarations") {
+    for (const child of node.namedChildren) {
+      collectMemberTypeNames(child, enclosingName, names);
     }
   }
 }
