@@ -59,7 +59,8 @@ function extractImports(root: Node): ImportReference[] {
   const references: ImportReference[] = [];
   for (const declaration of root.descendantsOfType(IMPORT_DECLARATION)) {
     const path = declaration.namedChildren.find(
-      (child) => child.type === "identifier" || child.type === "scoped_identifier"
+      (child) =>
+        child.type === "identifier" || child.type === "scoped_identifier"
     );
     if (path === undefined) {
       continue;
@@ -318,9 +319,7 @@ function isStringArrayParameter(parameter: Node): boolean {
   }
   const type = parameter.childForFieldName("type");
   if (type?.type === ARRAY_TYPE) {
-    return (
-      isStringType(type.namedChildren[0]) && hasSingleArrayDimension(type)
-    );
+    return isStringType(type.namedChildren[0]) && hasSingleArrayDimension(type);
   }
   return isStringType(type) && hasSingleArrayDimension(parameter);
 }
@@ -332,7 +331,8 @@ function hasSingleArrayDimension(node: Node): boolean {
   );
   return (
     dimensions !== undefined &&
-    dimensions.children.filter((child) => child.type === ARRAY_OPEN).length === 1
+    dimensions.children.filter((child) => child.type === ARRAY_OPEN).length ===
+      1
   );
 }
 

@@ -13,7 +13,9 @@ const JAVA = fileURLToPath(new URL("./fixtures/java", import.meta.url));
 describe("repo-lens Java resolver", () => {
   it("discovers Java source files and reports them as modules", () => {
     const report = scanReport(JAVA);
-    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 10 }]);
+    expect(report.meta.languages).toEqual([
+      { language: "java", fileCount: 10 },
+    ]);
     expect(report.modules.map((module) => module.id)).toEqual([
       "src/main/java/com/example/app/Main.java",
       "src/main/java/com/example/app/OuterUser.java",
