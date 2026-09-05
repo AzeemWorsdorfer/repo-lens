@@ -6,7 +6,7 @@ import java.util.List;
 import static com.example.model.Severity.*;
 
 public final class Main {
-    public static void main(final String[] args) {
+    public static void main(final String... args) {
         Store store = new Store();
         store.add(HIGH);
         System.out.println(List.of(store.total()));

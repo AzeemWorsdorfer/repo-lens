@@ -1,8 +1,8 @@
 /**
- * Java resolver: extracts import declarations, maps fully-qualified Java
- * types to parsed source modules, and detects canonical static `void main`
- * methods. Java imports are resolved against declared source types, so
- * standard library and third-party imports remain external.
+ * Java resolver: extracts import declarations, indexes Java package/type
+ * declarations, and detects canonical static `void main` methods. Java
+ * imports are resolved against declared source types, so standard library and
+ * third-party imports remain external.
  */
 import type { Node } from "web-tree-sitter";
 import type {
@@ -34,10 +34,16 @@ const TYPE_BODIES = new Set([
   "interface_body",
 ]);
 const JAVA_STRING_TYPES = new Set(["String", "java.lang.String"]);
+const JAVA_TYPE_NODES = new Set(["scoped_type_identifier", "type_identifier"]);
 const PACKAGE_MAP_CACHE = new WeakMap<
-  ReadonlyMap<string, Node>,
+  ReadonlyMap<string, unknown>,
   JavaPackageMap
 >();
+
+interface JavaModuleMetadata {
+  readonly packageName: string;
+  readonly declaredTypes: readonly string[];
+}
 
 interface JavaPackageMap {
   readonly types: ReadonlyMap<string, string | null>;
@@ -62,19 +68,19 @@ function extractImports(root: Node): ImportReference[] {
 }
 
 /**
- * Resolves a Java import against parsed source declarations. Ordinary package
+ * Resolves a Java import against compact parsed declarations. Ordinary package
  * wildcards return every declared type in the package; static imports target
  * their declaring type, including static wildcard imports.
  */
 function resolveImport(
   reference: ImportReference,
   modulePaths: ReadonlySet<string>,
-  parsedModules: ReadonlyMap<string, Node> | undefined
+  moduleMetadata: ReadonlyMap<string, unknown> | undefined
 ): ResolvedImport {
-  if (parsedModules === undefined) {
+  if (moduleMetadata === undefined) {
     return null;
   }
-  const packageMap = getPackageMap(modulePaths, parsedModules);
+  const packageMap = getPackageMap(modulePaths, moduleMetadata);
   const specifier = reference.specifier;
   if (specifier.endsWith(".*")) {
     const prefix = specifier.slice(0, -2);
@@ -105,14 +111,14 @@ function localType(
 /** Reuses a package map for every import in one scan's module set. */
 function getPackageMap(
   modulePaths: ReadonlySet<string>,
-  parsedModules: ReadonlyMap<string, Node>
+  moduleMetadata: ReadonlyMap<string, unknown>
 ): JavaPackageMap {
-  const cached = PACKAGE_MAP_CACHE.get(parsedModules);
+  const cached = PACKAGE_MAP_CACHE.get(moduleMetadata);
   if (cached !== undefined) {
     return cached;
   }
-  const packageMap = buildPackageMap(modulePaths, parsedModules);
-  PACKAGE_MAP_CACHE.set(parsedModules, packageMap);
+  const packageMap = buildPackageMap(modulePaths, moduleMetadata);
+  PACKAGE_MAP_CACHE.set(moduleMetadata, packageMap);
   return packageMap;
 }
 
@@ -123,7 +129,7 @@ function getPackageMap(
  */
 function buildPackageMap(
   modulePaths: ReadonlySet<string>,
-  parsedModules: ReadonlyMap<string, Node>
+  moduleMetadata: ReadonlyMap<string, unknown>
 ): JavaPackageMap {
   const types = new Map<string, string | null>();
   const packageCandidates = new Map<string, Set<string>>();
@@ -132,21 +138,21 @@ function buildPackageMap(
     .sort();
 
   for (const path of javaPaths) {
-    const root = parsedModules.get(path);
-    if (root === undefined) {
+    const metadata = moduleMetadata.get(path);
+    if (
+      !isJavaModuleMetadata(metadata) ||
+      metadata.declaredTypes.length === 0
+    ) {
       continue;
     }
-    const packageName = declaredPackage(root);
-    const declaredTypes = declaredTypeNames(root);
-    if (declaredTypes.length === 0) {
-      continue;
-    }
-    const candidates = packageCandidates.get(packageName) ?? new Set<string>();
+    const candidates = packageCandidates.get(metadata.packageName) ?? new Set();
     candidates.add(path);
-    packageCandidates.set(packageName, candidates);
-    for (const declaredType of declaredTypes) {
+    packageCandidates.set(metadata.packageName, candidates);
+    for (const declaredType of metadata.declaredTypes) {
       const qualifiedName =
-        packageName === "" ? declaredType : `${packageName}.${declaredType}`;
+        metadata.packageName === ""
+          ? declaredType
+          : `${metadata.packageName}.${declaredType}`;
       addType(types, qualifiedName, path);
     }
   }
@@ -170,6 +176,31 @@ function addType(
   } else if (existing !== path) {
     types.set(qualifiedName, null);
   }
+}
+
+/** Validates compact metadata crossing the generic resolver context boundary. */
+function isJavaModuleMetadata(value: unknown): value is JavaModuleMetadata {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  // The registry intentionally stores language-specific metadata as unknown.
+  const record = value as {
+    packageName?: unknown;
+    declaredTypes?: unknown;
+  };
+  return (
+    typeof record.packageName === "string" &&
+    Array.isArray(record.declaredTypes) &&
+    record.declaredTypes.every((type) => typeof type === "string")
+  );
+}
+
+/** Returns compact Java package/type metadata for the resolver context. */
+function moduleMetadataFor(root: Node): JavaModuleMetadata {
+  return {
+    packageName: declaredPackage(root),
+    declaredTypes: declaredTypeNames(root),
+  };
 }
 
 /** Returns the package declaration's qualified name, or the default package. */
@@ -245,7 +276,9 @@ function hasPublicStaticModifiers(text: string): boolean {
 /** Accepts array and varargs String parameters with legal annotations/modifiers. */
 function isStringArrayParameter(parameter: Node): boolean {
   if (parameter.type === "spread_parameter") {
-    return isStringType(parameter.namedChildren[0]);
+    return isStringType(
+      parameter.namedChildren.find((child) => JAVA_TYPE_NODES.has(child.type))
+    );
   }
   if (parameter.type !== "formal_parameter") {
     return false;
@@ -281,8 +314,9 @@ export const JAVA_RESOLVER: LanguageResolver = {
     return GRAMMAR_FILE;
   },
   extractImports,
+  moduleMetadataFor,
   resolveImport(reference, _fromModule, modulePaths, context): ResolvedImport {
-    return resolveImport(reference, modulePaths, context?.parsedModules);
+    return resolveImport(reference, modulePaths, context?.moduleMetadata);
   },
   isEntryScript,
 };

@@ -6,7 +6,6 @@
  */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Node } from "web-tree-sitter";
 import { discoverSourceFiles } from "./discovery.js";
 import { parseSource } from "./parser.js";
 import { cyclomaticComplexity, computePageRank } from "./metrics.js";
@@ -56,7 +55,7 @@ export async function analyze(root: string): Promise<Analysis> {
 
   const drafts: DraftModule[] = [];
   const importsByModule = new Map<string, readonly ImportReference[]>();
-  const parsedModules = new Map<string, Node>();
+  const moduleMetadata = new Map<string, unknown>();
   const entryScripts = new Set<string>();
   for (const file of files) {
     const resolver = getResolverForPath(file);
@@ -65,7 +64,10 @@ export async function analyze(root: string): Promise<Analysis> {
     }
     const content = readFileSync(join(absolute, file), "utf8");
     const rootNode = await parseSource(content, resolver.grammarFileFor(file));
-    parsedModules.set(file, rootNode);
+    const metadata = resolver.moduleMetadataFor?.(rootNode);
+    if (metadata !== undefined) {
+      moduleMetadata.set(file, metadata);
+    }
     if (resolver.isEntryScript?.(rootNode) === true) {
       entryScripts.add(file);
     }
@@ -83,7 +85,7 @@ export async function analyze(root: string): Promise<Analysis> {
   const edges: Edge[] = [];
   const emittedEdges = new Set<string>();
   const depsByModule = new Map<string, string[]>();
-  const resolveContext = { root: absolute, parsedModules };
+  const resolveContext = { root: absolute, moduleMetadata };
   for (const draft of drafts) {
     const resolver = getResolverForPath(draft.id);
     if (resolver === null) {

@@ -22,8 +22,8 @@ export type ImportKind = "import" | "require" | "import-from";
 export interface ResolveContext {
   /** Absolute path of the scan root, e.g. for locating go.mod. */
   readonly root: string;
-  /** Parsed source roots keyed by repository-relative module id. */
-  readonly parsedModules: ReadonlyMap<string, Node>;
+  /** Compact language-specific metadata keyed by repository-relative module id. */
+  readonly moduleMetadata: ReadonlyMap<string, unknown>;
 }
 
 /** A raw import/require reference extracted from the AST of a source file. */
@@ -35,7 +35,10 @@ export interface ImportReference {
   readonly isStatic?: boolean;
 }
 
-/** One or more local modules resolved from a single import declaration. */
+/**
+ * One or more local module ids resolved from a single import declaration;
+ * null means the reference is external or cannot be resolved.
+ */
 export type ResolvedImport = string | readonly string[] | null;
 
 /**
@@ -53,9 +56,10 @@ export interface LanguageResolver {
   /** Extracts import/require references from a parsed root node. */
   extractImports(root: Node): readonly ImportReference[];
   /**
-   * Resolves a reference to a module id, or null for externals/unresolvable.
-   * `context` is provided by the scan when a resolver needs the scan root
-   * (e.g. Go's go.mod lookup); resolvers that do not need it omit the param.
+   * Resolves a reference to one or more module ids, or null for
+   * externals/unresolvable references. `context` is provided by the scan when
+   * a resolver needs the scan root or compact module metadata (e.g. Java or Go);
+   * resolvers that do not need it omit the param.
    */
   resolveImport(
     reference: ImportReference,
@@ -63,6 +67,11 @@ export interface LanguageResolver {
     modulePaths: ReadonlySet<string>,
     context?: ResolveContext
   ): ResolvedImport;
+  /**
+   * Returns compact metadata needed to resolve this language's imports, or
+   * undefined when its resolver can work from the reference and module paths.
+   */
+  moduleMetadataFor?(root: Node): unknown;
   /**
    * True when a parsed module is an entry script for its ecosystem (e.g. a
    * Python `__name__ == "__main__"` guard). Absent for languages whose

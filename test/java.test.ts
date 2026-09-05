@@ -13,9 +13,10 @@ const JAVA = fileURLToPath(new URL("./fixtures/java", import.meta.url));
 describe("repo-lens Java resolver", () => {
   it("discovers Java source files and reports them as modules", () => {
     const report = scanReport(JAVA);
-    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 6 }]);
+    expect(report.meta.languages).toEqual([{ language: "java", fileCount: 7 }]);
     expect(report.modules.map((module) => module.id)).toEqual([
       "src/main/java/com/example/app/Main.java",
+      "src/main/java/com/example/app/SeverityPrinter.java",
       "src/main/java/com/example/model/Severity.java",
       "src/main/java/com/example/store/Store.java",
       "src/main/java/com/example/store/StoreHelper.java",
@@ -26,7 +27,7 @@ describe("repo-lens Java resolver", () => {
 
   it("resolves local Java imports through package and class declarations", () => {
     const report = scanReport(JAVA);
-    // java.util.List is external; package and static wildcard imports map to
+    // java.util.List is external; package wildcards and static imports map to
     // declared local types rather than to guessed path suffixes.
     expect(report.edges).toEqual([
       {
@@ -42,6 +43,11 @@ describe("repo-lens Java resolver", () => {
       {
         source: "src/main/java/com/example/app/Main.java",
         target: "src/main/java/definitions/Level.java",
+        kind: "import",
+      },
+      {
+        source: "src/main/java/com/example/app/SeverityPrinter.java",
+        target: "src/main/java/com/example/model/Severity.java",
         kind: "import",
       },
       {
@@ -61,15 +67,15 @@ describe("repo-lens Java resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 6,
-      edges: 6,
+      modules: 7,
+      edges: 7,
       cycles: 0,
     });
   });
 
   it("flags only canonical Java main methods as entrypoints", () => {
     const report = scanReport(JAVA);
-    // Main's final parameter modifier is legal. Store also has an instance
+    // Main's final varargs parameter is legal. Store also has an instance
     // main and a non-void main, neither of which can launch a Java program.
     expect(report.entrypoints).toEqual([
       "src/main/java/com/example/app/Main.java",
