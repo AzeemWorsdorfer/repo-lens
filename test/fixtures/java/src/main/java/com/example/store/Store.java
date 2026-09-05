@@ -12,4 +12,11 @@ public final class Store {
     public int total() {
         return severity == null ? 0 : severity.ordinal();
     }
+
+    // These main-shaped methods are not launchable Java entrypoints.
+    public void main(String[] args) {}
+
+    public static int main(int[] args) {
+        return args.length;
+    }
 }

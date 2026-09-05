@@ -22,6 +22,8 @@ export type ImportKind = "import" | "require" | "import-from";
 export interface ResolveContext {
   /** Absolute path of the scan root, e.g. for locating go.mod. */
   readonly root: string;
+  /** Parsed source roots keyed by repository-relative module id. */
+  readonly parsedModules: ReadonlyMap<string, Node>;
 }
 
 /** A raw import/require reference extracted from the AST of a source file. */
@@ -29,7 +31,12 @@ export interface ImportReference {
   /** The module specifier as written, e.g. "./utils" or "lodash". */
   readonly specifier: string;
   readonly kind: ImportKind;
+  /** True for language forms whose member resolution differs from packages. */
+  readonly isStatic?: boolean;
 }
+
+/** One or more local modules resolved from a single import declaration. */
+export type ResolvedImport = string | readonly string[] | null;
 
 /**
  * A per-language translator: it parses imports out of an AST and resolves
@@ -55,7 +62,7 @@ export interface LanguageResolver {
     fromModule: string,
     modulePaths: ReadonlySet<string>,
     context?: ResolveContext
-  ): string | null;
+  ): ResolvedImport;
   /**
    * True when a parsed module is an entry script for its ecosystem (e.g. a
    * Python `__name__ == "__main__"` guard). Absent for languages whose

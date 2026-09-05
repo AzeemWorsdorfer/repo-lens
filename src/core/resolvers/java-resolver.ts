@@ -1,13 +1,14 @@
 /**
  * Java resolver: extracts import declarations, maps fully-qualified Java
- * types to source modules, and detects canonical static `void main` methods.
- * Java imports are resolved against the discovered source files, so standard
- * library and third-party imports remain external.
+ * types to parsed source modules, and detects canonical static `void main`
+ * methods. Java imports are resolved against declared source types, so
+ * standard library and third-party imports remain external.
  */
 import type { Node } from "web-tree-sitter";
 import type {
   ImportReference,
   LanguageResolver,
+  ResolvedImport,
 } from "../resolver-registry.js";
 
 const EXTENSIONS = [".java"] as const;
@@ -19,111 +20,198 @@ const MODIFIERS = "modifiers";
 const VOID_TYPE = "void_type";
 const MAIN_METHOD = "main";
 const MAIN_MODIFIERS = /\b(?:public|static)\b/g;
-const JAVA_MAIN_PARAMETER =
-  /^(?:java\.lang\.)?String(?:\[\][A-Za-z_$][\w$]*|\.\.\.[A-Za-z_$][\w$]*|[A-Za-z_$][\w$]*\[\])$/;
-const packageMapCache = new WeakMap<ReadonlySet<string>, JavaPackageMap>();
+const TYPE_DECLARATIONS = new Set([
+  "annotation_type_declaration",
+  "class_declaration",
+  "enum_declaration",
+  "interface_declaration",
+  "record_declaration",
+]);
+const TYPE_BODIES = new Set([
+  "annotation_type_body",
+  "class_body",
+  "enum_body",
+  "interface_body",
+]);
+const JAVA_STRING_TYPES = new Set(["String", "java.lang.String"]);
+const PACKAGE_MAP_CACHE = new WeakMap<
+  ReadonlyMap<string, Node>,
+  JavaPackageMap
+>();
 
 interface JavaPackageMap {
-  readonly types: ReadonlyMap<string, string>;
-  readonly packages: ReadonlyMap<string, string>;
+  readonly types: ReadonlyMap<string, string | null>;
+  readonly packages: ReadonlyMap<string, readonly string[]>;
 }
 
-/** Extracts one fully-qualified import reference per Java import declaration. */
+/** Extracts one import reference per Java import declaration. */
 function extractImports(root: Node): ImportReference[] {
   const references: ImportReference[] = [];
   for (const declaration of root.descendantsOfType(IMPORT_DECLARATION)) {
-    const specifier = declaration.text
-      .replace(/^import\s+/, "")
-      .replace(/^static\s+/, "")
-      .replace(/;\s*$/, "")
-      .trim();
-    if (specifier !== "") {
-      references.push({ specifier, kind: "import" });
+    const match = declaration.text.match(/^import\s+(static\s+)?(.+?)\s*;\s*$/);
+    const specifier = match?.[2]?.trim();
+    if (specifier !== undefined && specifier !== "") {
+      references.push({
+        specifier,
+        kind: "import",
+        isStatic: match?.[1] !== undefined,
+      });
     }
   }
   return references;
 }
 
 /**
- * Resolves a Java import against the discovered source type map. A wildcard
- * package import uses its first stable source module, while static member
- * imports resolve to the type before the member name.
+ * Resolves a Java import against parsed source declarations. Ordinary package
+ * wildcards return every declared type in the package; static imports target
+ * their declaring type, including static wildcard imports.
  */
 function resolveImport(
   reference: ImportReference,
-  modulePaths: ReadonlySet<string>
-): string | null {
-  const packageMap = getPackageMap(modulePaths);
-  if (reference.specifier.endsWith(".*")) {
-    return packageMap.packages.get(reference.specifier.slice(0, -2)) ?? null;
-  }
-  const direct = packageMap.types.get(reference.specifier);
-  if (direct !== undefined) {
-    return direct;
-  }
-  const memberSeparator = reference.specifier.lastIndexOf(".");
-  if (memberSeparator === -1) {
+  modulePaths: ReadonlySet<string>,
+  parsedModules: ReadonlyMap<string, Node> | undefined
+): ResolvedImport {
+  if (parsedModules === undefined) {
     return null;
   }
-  return (
-    packageMap.types.get(reference.specifier.slice(0, memberSeparator)) ?? null
-  );
+  const packageMap = getPackageMap(modulePaths, parsedModules);
+  const specifier = reference.specifier;
+  if (specifier.endsWith(".*")) {
+    const prefix = specifier.slice(0, -2);
+    if (reference.isStatic === true) {
+      return localType(packageMap, prefix);
+    }
+    return packageMap.packages.get(prefix) ?? null;
+  }
+  if (reference.isStatic === true) {
+    const memberSeparator = specifier.lastIndexOf(".");
+    if (memberSeparator === -1) {
+      return null;
+    }
+    return localType(packageMap, specifier.slice(0, memberSeparator));
+  }
+  return localType(packageMap, specifier);
+}
+
+/** Returns a non-ambiguous local type as a one-edge resolution. */
+function localType(
+  packageMap: JavaPackageMap,
+  qualifiedName: string
+): string | null {
+  const path = packageMap.types.get(qualifiedName);
+  return path === undefined || path === null ? null : path;
 }
 
 /** Reuses a package map for every import in one scan's module set. */
-function getPackageMap(modulePaths: ReadonlySet<string>): JavaPackageMap {
-  const cached = packageMapCache.get(modulePaths);
+function getPackageMap(
+  modulePaths: ReadonlySet<string>,
+  parsedModules: ReadonlyMap<string, Node>
+): JavaPackageMap {
+  const cached = PACKAGE_MAP_CACHE.get(parsedModules);
   if (cached !== undefined) {
     return cached;
   }
-  const packageMap = buildPackageMap(modulePaths);
-  packageMapCache.set(modulePaths, packageMap);
+  const packageMap = buildPackageMap(modulePaths, parsedModules);
+  PACKAGE_MAP_CACHE.set(parsedModules, packageMap);
   return packageMap;
 }
 
 /**
- * Builds maps from Java qualified type/package names to source modules. Every
- * path suffix is considered because Java source roots such as `src/main/java`
- * are not part of a package declaration.
+ * Builds maps from Java package/type declarations to source modules. The
+ * package declaration and declared type names are authoritative even when a
+ * repository uses a non-standard source-root layout.
  */
-function buildPackageMap(modulePaths: ReadonlySet<string>): JavaPackageMap {
-  const types = new Map<string, string>();
-  const packageCandidates = new Map<string, string[]>();
+function buildPackageMap(
+  modulePaths: ReadonlySet<string>,
+  parsedModules: ReadonlyMap<string, Node>
+): JavaPackageMap {
+  const types = new Map<string, string | null>();
+  const packageCandidates = new Map<string, Set<string>>();
   const javaPaths = [...modulePaths]
     .filter((path) => path.endsWith(JAVA_EXTENSION))
     .sort();
 
   for (const path of javaPaths) {
-    const segments = path
-      .slice(0, -JAVA_EXTENSION.length)
-      .split("/")
-      .filter((segment) => segment !== "");
-    const className = segments.at(-1);
-    if (className === undefined) {
+    const root = parsedModules.get(path);
+    if (root === undefined) {
       continue;
     }
-    for (let start = 0; start < segments.length; start += 1) {
-      const qualifiedName = segments.slice(start).join(".");
-      if (!types.has(qualifiedName)) {
-        types.set(qualifiedName, path);
-      }
-      const packageName = segments.slice(start, -1).join(".");
-      if (packageName !== "") {
-        const candidates = packageCandidates.get(packageName);
-        if (candidates === undefined) {
-          packageCandidates.set(packageName, [path]);
-        } else {
-          candidates.push(path);
-        }
-      }
+    const packageName = declaredPackage(root);
+    const declaredTypes = declaredTypeNames(root);
+    if (declaredTypes.length === 0) {
+      continue;
+    }
+    const candidates = packageCandidates.get(packageName) ?? new Set<string>();
+    candidates.add(path);
+    packageCandidates.set(packageName, candidates);
+    for (const declaredType of declaredTypes) {
+      const qualifiedName =
+        packageName === "" ? declaredType : `${packageName}.${declaredType}`;
+      addType(types, qualifiedName, path);
     }
   }
 
-  const packages = new Map<string, string>();
+  const packages = new Map<string, readonly string[]>();
   for (const [packageName, candidates] of packageCandidates) {
-    packages.set(packageName, candidates[0] ?? "");
+    packages.set(packageName, [...candidates].sort());
   }
   return { types, packages };
+}
+
+/** Adds a type mapping, marking duplicate qualified declarations ambiguous. */
+function addType(
+  types: Map<string, string | null>,
+  qualifiedName: string,
+  path: string
+): void {
+  const existing = types.get(qualifiedName);
+  if (existing === undefined) {
+    types.set(qualifiedName, path);
+  } else if (existing !== path) {
+    types.set(qualifiedName, null);
+  }
+}
+
+/** Returns the package declaration's qualified name, or the default package. */
+function declaredPackage(root: Node): string {
+  const declaration = root.namedChildren.find(
+    (child) => child.type === "package_declaration"
+  );
+  return declaration?.namedChildren[0]?.text ?? "";
+}
+
+/** Returns every top-level and member type declared by a Java source file. */
+function declaredTypeNames(root: Node): string[] {
+  const names: string[] = [];
+  for (const child of root.namedChildren) {
+    if (TYPE_DECLARATIONS.has(child.type)) {
+      collectTypeNames(child, "", names);
+    }
+  }
+  return names;
+}
+
+/** Recursively names a type and its importable member types. */
+function collectTypeNames(
+  declaration: Node,
+  enclosingName: string,
+  names: string[]
+): void {
+  const name = declaration.childForFieldName("name")?.text;
+  if (name === undefined) {
+    return;
+  }
+  const qualifiedName =
+    enclosingName === "" ? name : `${enclosingName}.${name}`;
+  names.push(qualifiedName);
+  const body = declaration.namedChildren.find((child) =>
+    TYPE_BODIES.has(child.type)
+  );
+  for (const child of body?.namedChildren ?? []) {
+    if (TYPE_DECLARATIONS.has(child.type)) {
+      collectTypeNames(child, qualifiedName, names);
+    }
+  }
 }
 
 /** True when a method has Java's canonical public static void main signature. */
@@ -145,13 +233,38 @@ function isMainMethod(method: Node): boolean {
   return (
     parameters?.namedChildren.length === 1 &&
     parameter !== undefined &&
-    JAVA_MAIN_PARAMETER.test(parameter.text.replace(/\s+/g, ""))
+    isStringArrayParameter(parameter)
   );
 }
 
 /** Checks both required method modifiers without accepting a partial word. */
 function hasPublicStaticModifiers(text: string): boolean {
   return [...text.matchAll(MAIN_MODIFIERS)].length === 2;
+}
+
+/** Accepts array and varargs String parameters with legal annotations/modifiers. */
+function isStringArrayParameter(parameter: Node): boolean {
+  if (parameter.type === "spread_parameter") {
+    return isStringType(parameter.namedChildren[0]);
+  }
+  if (parameter.type !== "formal_parameter") {
+    return false;
+  }
+  const type = parameter.childForFieldName("type");
+  if (type?.type === "array_type") {
+    return isStringType(type.namedChildren[0]);
+  }
+  return (
+    isStringType(type) &&
+    parameter.namedChildren.some((child) => child.type === "dimensions")
+  );
+}
+
+/** True for either spelling of java.lang.String's simple source name. */
+function isStringType(node: Node | null | undefined): boolean {
+  return (
+    node !== null && node !== undefined && JAVA_STRING_TYPES.has(node.text)
+  );
 }
 
 /** True when any Java method in the source has the canonical main signature. */
@@ -168,8 +281,8 @@ export const JAVA_RESOLVER: LanguageResolver = {
     return GRAMMAR_FILE;
   },
   extractImports,
-  resolveImport(reference, _fromModule, modulePaths): string | null {
-    return resolveImport(reference, modulePaths);
+  resolveImport(reference, _fromModule, modulePaths, context): ResolvedImport {
+    return resolveImport(reference, modulePaths, context?.parsedModules);
   },
   isEntryScript,
 };
