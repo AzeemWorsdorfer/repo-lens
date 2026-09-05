@@ -19,6 +19,10 @@ public final class Store {
     @Flags("public static")
     void main(String[] args) {}
 
+    public static void main(String args[][]) {}
+
+    public public static void main(String[] args) {}
+
     public static int main(int[] args) {
         return args.length;
     }

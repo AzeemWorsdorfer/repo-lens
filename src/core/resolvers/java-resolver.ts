@@ -18,6 +18,9 @@ const IMPORT_DECLARATION = "import_declaration";
 const METHOD_DECLARATION = "method_declaration";
 const MODIFIERS = "modifiers";
 const VOID_TYPE = "void_type";
+const ARRAY_TYPE = "array_type";
+const DIMENSIONS = "dimensions";
+const ARRAY_OPEN = "[";
 const MAIN_METHOD = "main";
 const PUBLIC_MODIFIER = "public";
 const STATIC_MODIFIER = "static";
@@ -271,15 +274,16 @@ function isMainMethod(method: Node): boolean {
 
 /** Checks both required method modifiers. */
 function hasPublicStaticModifiers(modifiers: Node): boolean {
-  const modifierTypes = new Set(
-    modifiers.children
-      .filter(
-        (child) =>
-          child.type === PUBLIC_MODIFIER || child.type === STATIC_MODIFIER
-      )
-      .map((child) => child.type)
+  const modifierCounts = new Map<string, number>();
+  for (const child of modifiers.children) {
+    if (child.type === PUBLIC_MODIFIER || child.type === STATIC_MODIFIER) {
+      modifierCounts.set(child.type, (modifierCounts.get(child.type) ?? 0) + 1);
+    }
+  }
+  return (
+    modifierCounts.get(PUBLIC_MODIFIER) === 1 &&
+    modifierCounts.get(STATIC_MODIFIER) === 1
   );
-  return modifierTypes.has(PUBLIC_MODIFIER) && modifierTypes.has(STATIC_MODIFIER);
 }
 
 /** Accepts array and varargs String parameters with legal annotations/modifiers. */
@@ -293,12 +297,22 @@ function isStringArrayParameter(parameter: Node): boolean {
     return false;
   }
   const type = parameter.childForFieldName("type");
-  if (type?.type === "array_type") {
-    return isStringType(type.namedChildren[0]);
+  if (type?.type === ARRAY_TYPE) {
+    return (
+      isStringType(type.namedChildren[0]) && hasSingleArrayDimension(type)
+    );
   }
+  return isStringType(type) && hasSingleArrayDimension(parameter);
+}
+
+/** True when a type or parameter has exactly one array dimension. */
+function hasSingleArrayDimension(node: Node): boolean {
+  const dimensions = node.namedChildren.find(
+    (child) => child.type === DIMENSIONS
+  );
   return (
-    isStringType(type) &&
-    parameter.namedChildren.some((child) => child.type === "dimensions")
+    dimensions !== undefined &&
+    dimensions.children.filter((child) => child.type === ARRAY_OPEN).length === 1
   );
 }
 
