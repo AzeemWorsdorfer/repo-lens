@@ -19,7 +19,8 @@ const METHOD_DECLARATION = "method_declaration";
 const MODIFIERS = "modifiers";
 const VOID_TYPE = "void_type";
 const MAIN_METHOD = "main";
-const MAIN_MODIFIERS = /\b(?:public|static)\b/g;
+const PUBLIC_MODIFIER = "public";
+const STATIC_MODIFIER = "static";
 const TYPE_DECLARATIONS = new Set([
   "annotation_type_declaration",
   "class_declaration",
@@ -256,7 +257,7 @@ function isMainMethod(method: Node): boolean {
   const modifiers = method.namedChildren.find(
     (child) => child.type === MODIFIERS
   );
-  if (modifiers === undefined || !hasPublicStaticModifiers(modifiers.text)) {
+  if (modifiers === undefined || !hasPublicStaticModifiers(modifiers)) {
     return false;
   }
   const parameters = method.childForFieldName("parameters");
@@ -268,9 +269,17 @@ function isMainMethod(method: Node): boolean {
   );
 }
 
-/** Checks both required method modifiers without accepting a partial word. */
-function hasPublicStaticModifiers(text: string): boolean {
-  return [...text.matchAll(MAIN_MODIFIERS)].length === 2;
+/** Checks both required method modifiers. */
+function hasPublicStaticModifiers(modifiers: Node): boolean {
+  const modifierTypes = new Set(
+    modifiers.children
+      .filter(
+        (child) =>
+          child.type === PUBLIC_MODIFIER || child.type === STATIC_MODIFIER
+      )
+      .map((child) => child.type)
+  );
+  return modifierTypes.has(PUBLIC_MODIFIER) && modifierTypes.has(STATIC_MODIFIER);
 }
 
 /** Accepts array and varargs String parameters with legal annotations/modifiers. */

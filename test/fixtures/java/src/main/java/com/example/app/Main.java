@@ -6,6 +6,7 @@ import java.util.List;
 import static com.example.model.Severity.*;
 
 public final class Main {
+    @SuppressWarnings("static")
     public static void main(final String... args) {
         Store store = new Store();
         store.add(HIGH);
