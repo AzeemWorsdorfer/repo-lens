@@ -1,4 +1,4 @@
-#[path = "extra/under_a_different_name.rs"]
+#[path = "../extra/under_a_different_name.rs"]
 mod renamed;
 
 #[cfg(test)]

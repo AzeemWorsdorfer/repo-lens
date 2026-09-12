@@ -10,7 +10,10 @@ import { scan, scanReport } from "./helpers.js";
 
 const RUST = fileURLToPath(new URL("./fixtures/rust", import.meta.url));
 const RUST_REVIEW = fileURLToPath(
-  new URL("./fixtures/rust/review", import.meta.url)
+  new URL("./fixtures/rust-review", import.meta.url)
+);
+const RUST_FALLBACK = fileURLToPath(
+  new URL("./fixtures/rust-fallback", import.meta.url)
 );
 
 describe("repo-lens rust resolver", () => {
@@ -134,6 +137,11 @@ describe("repo-lens rust resolver", () => {
         kind: "import",
       },
       {
+        source: "src/main.rs",
+        target: "src/main/child.rs",
+        kind: "import",
+      },
+      {
         source: "src/root.rs",
         target: "src/child.rs",
         kind: "import",
@@ -145,14 +153,30 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/root.rs",
+        target: "src/main.rs",
+        kind: "import",
+      },
+      {
+        source: "src/root.rs",
         target: "src/outer/service.rs",
         kind: "import",
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 4,
-      edges: 5,
+      modules: 6,
+      edges: 7,
     });
+  });
+
+  it("keeps loose module parents file-backed for relative uses", () => {
+    const report = scanReport(RUST_FALLBACK);
+    expect(report.edges).toEqual([
+      {
+        source: "src/loose/child.rs",
+        target: "src/loose.rs",
+        kind: "import",
+      },
+    ]);
   });
 
   it("flags the crate root main.rs as the sole entrypoint", () => {

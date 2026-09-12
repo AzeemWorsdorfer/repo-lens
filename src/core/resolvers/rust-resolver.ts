@@ -369,6 +369,11 @@ function buildCrate(
     rustPaths,
     resolvedModsByFile
   );
+  for (const [fileId, modulePath] of declaringModules) {
+    if (fileId !== rootFileId) {
+      attachFileNode(root, modulePath, fileId);
+    }
+  }
   for (const [declaringFile, mods] of resolvedModsByFile) {
     const declaringModule =
       declaringModules.get(declaringFile) ??
@@ -469,15 +474,15 @@ function modulePathsForDeclarations(
     declaringModules.set(rootFileId, "");
   }
   const pending = rootFileId === "" ? [] : [rootFileId];
-  const processed = new Set<string>();
+  let pendingIndex = 0;
   let fallbackIndex = 0;
   while (true) {
-    for (let index = 0; index < pending.length; index += 1) {
-      const declaringFile = pending[index];
-      if (declaringFile === undefined || processed.has(declaringFile)) {
+    while (pendingIndex < pending.length) {
+      const declaringFile = pending[pendingIndex];
+      pendingIndex += 1;
+      if (declaringFile === undefined) {
         continue;
       }
-      processed.add(declaringFile);
       const declaringModule = declaringModules.get(declaringFile);
       if (declaringModule === undefined) {
         continue;
@@ -587,9 +592,7 @@ function declaringDirectory(fileId: string, rootFileId: string | null): string {
   }
   const fileName = basename(fileId);
   if (
-    fileName === "mod.rs" ||
-    fileName === BINARY_ROOT_FILE ||
-    fileName === LIBRARY_ROOT_FILE
+    fileName === "mod.rs"
   ) {
     return directory;
   }
@@ -663,6 +666,22 @@ function resolveUsePath(
   return currentFile === declaringFile ? null : currentFile;
 }
 
+/** Attaches a file-backed node at its virtual module path. */
+function attachFileNode(
+  root: ModuleTreeNode,
+  modulePath: string,
+  fileId: string
+): void {
+  if (modulePath === "") {
+    return;
+  }
+  const parentPath = dirname(modulePath);
+  attach(root, parentPath === "." ? "" : parentPath, basename(modulePath), {
+    fileId,
+    children: new Map(),
+  });
+}
+
 /** Attaches `node` as `name` under the module path below the crate root. */
 function attach(
   root: ModuleTreeNode,
@@ -676,7 +695,12 @@ function attach(
       current = getOrCreateChild(current, segment);
     }
   }
-  current.children.set(name, node);
+  const existing = current.children.get(name);
+  if (existing === undefined) {
+    current.children.set(name, node);
+  } else if (existing.fileId === null && node.fileId !== null) {
+    existing.fileId = node.fileId;
+  }
 }
 
 /** Returns the named child, creating a virtual intermediate when absent. */

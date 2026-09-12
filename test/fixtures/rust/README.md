@@ -30,7 +30,7 @@ alias;`, `mod cli;`, the inline `mod nested { pub mod leaf; }` (mapping
   brace leaf `nested::leaf::reader as r` from `no_main.rs`. Uses
   `std::collections::HashMap` (external). Complexity 1.
 - `src/lib.rs` - the library root: declares `mod renamed;` remapped by
-  `#[path = "extra/under_a_different_name.rs"]`, and `#[cfg(test)] mod tests`
+  `#[path = "../extra/under_a_different_name.rs"]`, and `#[cfg(test)] mod tests`
   (inline, body uses are not top-level). Not an entrypoint. Complexity 1.
 - `src/extra/under_a_different_name.rs` - the `#[path]`-remapped module
   `renamed`. Uses `crate::cli` and `serde_json::Value` (external).
