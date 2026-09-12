@@ -103,6 +103,12 @@ interface CrateTree {
   readonly declaringModules: ReadonlyMap<string, string>;
 }
 
+/** Module paths assigned during reachable and fallback discovery. */
+interface ModulePathAssignments {
+  readonly declaringModules: ReadonlyMap<string, string>;
+  readonly fallbackFiles: ReadonlySet<string>;
+}
+
 /** Per-scan crate context cached on the registry's metadata map. */
 interface CrateContext {
   readonly crate: CrateTree;
@@ -120,7 +126,7 @@ function extractImports(root: Node): ImportReference[] {
   return importsInScope(root, "");
 }
 
-/** Collects imports from one source scope and recursively visits inline mods. */
+/** Collects imports from nested AST scopes while preserving module scope. */
 function importsInScope(scope: Node, moduleScope: string): ImportReference[] {
   const references: ImportReference[] = [];
   for (const declaration of scope.namedChildren) {
@@ -138,7 +144,9 @@ function importsInScope(scope: Node, moduleScope: string): ImportReference[] {
           )
         );
       }
-    } else if (declaration.type === USE_DECLARATION) {
+      continue;
+    }
+    if (declaration.type === USE_DECLARATION) {
       const argument = declaration.childForFieldName("argument");
       if (argument !== null) {
         for (const leaf of useLeaves(argument, "")) {
@@ -149,7 +157,9 @@ function importsInScope(scope: Node, moduleScope: string): ImportReference[] {
           });
         }
       }
+      continue;
     }
+    references.push(...importsInScope(declaration, moduleScope));
   }
   return references;
 }
@@ -373,7 +383,6 @@ function buildCrate(
     modsByFile,
     rootFileId
   );
-  const declaredModuleFileIds = resolvedFileIds(resolvedModsByFile);
 
   const root: ModuleTreeNode = {
     fileId: rootFileId,
@@ -381,10 +390,15 @@ function buildCrate(
     isDeclared: true,
     children: new Map(),
   };
-  const declaringModules = modulePathsForDeclarations(
+  const pathAssignments = modulePathsForDeclarations(
     rootFileId,
     rustPaths,
     resolvedModsByFile
+  );
+  const declaringModules = pathAssignments.declaringModules;
+  const declaredModuleFileIds = declaredFileIdsForReachableModules(
+    resolvedModsByFile,
+    pathAssignments.fallbackFiles
   );
   const virtualModulePaths = new Set<string>();
   for (const [declaringFile, mods] of resolvedModsByFile) {
@@ -413,6 +427,12 @@ function buildCrate(
     const declaringModule =
       declaringModules.get(declaringFile) ??
       modulePathOf(declaringFile, rootFileId);
+    const isFallbackFile =
+      declaringFile !== rootFileId &&
+      !declaredModuleFileIds.has(declaringFile);
+    if (isFallbackFile && isWithinVirtualModule(declaringModule, virtualModulePaths)) {
+      continue;
+    }
     for (const mod of mods) {
       attach(root, join(declaringModule, mod.inlinePath), mod.name, {
         fileId: mod.resolvedFileId,
@@ -521,6 +541,28 @@ function modulePathOf(fileId: string, rootFileId: string): string {
   return modulePath;
 }
 
+/** Collects targets declared by reachable modules only. */
+function declaredFileIdsForReachableModules(
+  resolvedModsByFile: ReadonlyMap<
+    string,
+    readonly ResolvedModDeclaration[]
+  >,
+  fallbackFiles: ReadonlySet<string>
+): Set<string> {
+  const fileIds = new Set<string>();
+  for (const [declaringFile, mods] of resolvedModsByFile) {
+    if (fallbackFiles.has(declaringFile)) {
+      continue;
+    }
+    for (const mod of mods) {
+      if (mod.resolvedFileId !== null) {
+        fileIds.add(mod.resolvedFileId);
+      }
+    }
+  }
+  return fileIds;
+}
+
 /**
  * Maps each file to the virtual module path assigned by its declaration.
  * Unreachable files retain a path-derived fallback so relative references
@@ -533,8 +575,9 @@ function modulePathsForDeclarations(
     string,
     readonly ResolvedModDeclaration[]
   >
-): Map<string, string> {
+): ModulePathAssignments {
   const declaringModules = new Map<string, string>();
+  const fallbackFiles = new Set<string>();
   if (rootFileId !== "") {
     declaringModules.set(rootFileId, "");
   }
@@ -588,8 +631,9 @@ function modulePathsForDeclarations(
       }
     }
     if (fallbackFile === undefined) {
-      return declaringModules;
+      return { declaringModules, fallbackFiles };
     }
+    fallbackFiles.add(fallbackFile);
     declaringModules.set(fallbackFile, modulePathOf(fallbackFile, rootFileId));
     pending.push(fallbackFile);
   }

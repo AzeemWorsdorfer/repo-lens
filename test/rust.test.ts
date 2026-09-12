@@ -133,6 +133,11 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/extra.rs",
+        target: "src/outer/service.rs",
+        kind: "import",
+      },
+      {
+        source: "src/extra.rs",
         target: "src/root.rs",
         kind: "import",
       },
@@ -163,8 +168,8 @@ describe("repo-lens rust resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 7,
-      edges: 7,
+      modules: 9,
+      edges: 8,
       entrypoints: 0,
     });
     expect(report.entrypoints).toEqual([]);
