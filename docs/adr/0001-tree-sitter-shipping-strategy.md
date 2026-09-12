@@ -45,4 +45,6 @@ portable and conflict-free.
   `tree-sitter/tree-sitter-go`), matching the same WASM runtime.
 - Ticket 04 vendors the Java grammar at v0.23.5 (the npm package's prebuilt
   WASM asset), matching the same WASM runtime.
+- Ticket 05 vendors the Rust grammar at v0.24.0 (the npm package's prebuilt
+  WASM asset), matching the same WASM runtime.
 - `grammars/` must be added to `package.json` `files` when the files land.
