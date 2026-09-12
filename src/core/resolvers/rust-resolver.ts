@@ -357,26 +357,9 @@ function buildCrate(
     modsByFile,
     null
   );
-  const rootIndependentModsByFile = resolveModDeclarations(
-    modulePaths,
-    modsByFile,
-    ""
-  );
-  const declaredFileIds = resolvedFileIds(
-    rootIndependentModsByFile,
-    false
-  );
-
-  // A candidate is a root when no non-root declaration targets it.
-  const rootCandidates = rustPaths.filter(
-    (candidate) => !declaredFileIds.has(candidate)
-  );
   // A binary crate's main.rs outranks a library root lib.rs: crate:: and
   // super:: anchors resolve against the runnable crate root.
-  const rootFileId = selectRootFileId(
-    rootCandidates.length > 0 ? rootCandidates : rustPaths,
-    rootStyleModsByFile
-  );
+  const rootFileId = selectRootFileId(rustPaths, rootStyleModsByFile);
   const resolvedModsByFile = resolveModDeclarations(
     modulePaths,
     modsByFile,
@@ -680,15 +663,17 @@ function isWithinVirtualModule(
   modulePath: string,
   virtualModulePaths: ReadonlySet<string>
 ): boolean {
-  for (const virtualPath of virtualModulePaths) {
-    if (
-      modulePath === virtualPath ||
-      modulePath.startsWith(`${virtualPath}/`)
-    ) {
+  let candidate = modulePath;
+  while (true) {
+    if (virtualModulePaths.has(candidate)) {
       return true;
     }
+    const separator = candidate.lastIndexOf("/");
+    if (separator < 0) {
+      return false;
+    }
+    candidate = candidate.slice(0, separator);
   }
-  return false;
 }
 
 function resolveReference(
@@ -768,11 +753,14 @@ function resolveUsePath(
     rest = segments.slice(ups + (hasSelf ? 1 : 0));
     const moduleSegments = declaringModulePath
       .split("/")
-      .filter((segment) => segment !== "");
+      .filter((segment) => segment !== "" && segment !== ".");
     if (ups > moduleSegments.length) {
       return null;
     }
-    const modulePath = moduleSegments.slice(0, -ups || undefined).join("/");
+    const modulePath =
+      ups === 0
+        ? moduleSegments.join("/")
+        : moduleSegments.slice(0, -ups).join("/");
     const target = nodeAt(crate.root, modulePath);
     if (target === null) {
       return null;
