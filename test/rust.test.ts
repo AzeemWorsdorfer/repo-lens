@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 import { scan, scanReport } from "./helpers.js";
 
 const RUST = fileURLToPath(new URL("./fixtures/rust", import.meta.url));
+const RUST_REVIEW = fileURLToPath(
+  new URL("./fixtures/rust/review", import.meta.url)
+);
 
 describe("repo-lens rust resolver", () => {
   it("discovers Rust source files and reports them as modules", () => {
@@ -109,6 +112,36 @@ describe("repo-lens rust resolver", () => {
       modules: 10,
       edges: 13,
       cycles: 2,
+    });
+  });
+
+  it("resolves wildcard paths, roots, and remapped module parents", () => {
+    const report = scanReport(RUST_REVIEW);
+    expect(report.edges).toEqual([
+      {
+        source: "src/extra.rs",
+        target: "src/child.rs",
+        kind: "import",
+      },
+      {
+        source: "src/root.rs",
+        target: "src/child.rs",
+        kind: "import",
+      },
+      {
+        source: "src/root.rs",
+        target: "src/extra.rs",
+        kind: "import",
+      },
+      {
+        source: "src/root.rs",
+        target: "src/outer/service.rs",
+        kind: "import",
+      },
+    ]);
+    expect(report.meta.counts).toMatchObject({
+      modules: 4,
+      edges: 4,
     });
   });
 

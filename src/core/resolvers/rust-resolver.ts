@@ -43,6 +43,7 @@ const USE_LIST = "use_list";
 const SCOPED_USE_LIST = "scoped_use_list";
 const USE_AS_CLAUSE = "use_as_clause";
 const USE_WILDCARD = "use_wildcard";
+const WILDCARD_SUFFIX = "::*";
 const FUNCTION_ITEM = "function_item";
 const ATTRIBUTE_ITEM = "attribute_item";
 const ATTRIBUTE = "attribute";
@@ -76,6 +77,11 @@ interface ModDeclaration {
 /** Compact metadata stored per file in the registry's context map. */
 interface RustModuleMetadata {
   readonly mods: readonly ModDeclaration[];
+}
+
+/** A mod declaration paired with its resolved file target for tree assembly. */
+interface ResolvedModDeclaration extends ModDeclaration {
+  readonly resolvedFileId: string | null;
 }
 
 /** A node in the crate module tree: file-backed, or virtual when null. */
@@ -147,7 +153,10 @@ function useLeaves(node: Node, prefix: string): string[] {
     return [joinPath(prefix, node.childForFieldName("path")?.text ?? "")];
   }
   if (node.type === USE_WILDCARD) {
-    return [prefix];
+    const wildcardPath = node.text.endsWith(WILDCARD_SUFFIX)
+      ? node.text.slice(0, -WILDCARD_SUFFIX.length)
+      : "";
+    return [joinPath(prefix, wildcardPath)];
   }
   return [joinPath(prefix, node.text)];
 }
@@ -303,16 +312,28 @@ function buildCrate(
     }
   }
 
+  const resolvedModsByFile = new Map<
+    string,
+    readonly ResolvedModDeclaration[]
+  >();
+  const declaredFileIds = new Set<string>();
+  for (const [declaringFile, mods] of modsByFile) {
+    const resolvedMods = mods.map((mod) => {
+      const resolvedFileId = declaredFileId(
+        mod,
+        declaringFile,
+        modulePaths
+      );
+      if (resolvedFileId !== null) {
+        declaredFileIds.add(resolvedFileId);
+      }
+      return { ...mod, resolvedFileId };
+    });
+    resolvedModsByFile.set(declaringFile, resolvedMods);
+  }
+
   // The crate root is the file no scanned file declares as a child module;
   // main.rs/lib.rs are the conventional fallbacks for single-file crates.
-  const declaredFileIds = new Set<string>();
-  for (const mods of modsByFile.values()) {
-    for (const mod of mods) {
-      if (mod.fileId !== null) {
-        declaredFileIds.add(mod.fileId);
-      }
-    }
-  }
   const rootCandidates = rustPaths.filter((path) => !declaredFileIds.has(path));
   // A binary crate's main.rs outranks a library root lib.rs: crate:: and
   // super:: anchors resolve against the runnable crate root.
@@ -324,17 +345,17 @@ function buildCrate(
     "";
 
   const root: ModuleTreeNode = { fileId: rootFileId, children: new Map() };
-  const declaringModules = new Map<string, string>();
-  for (const [declaringFile, mods] of modsByFile) {
-    const declaringModule = modulePathOf(declaringFile, rootFileId);
-    declaringModules.set(declaringFile, declaringModule);
+  const declaringModules = modulePathsForDeclarations(
+    rootFileId,
+    rustPaths,
+    resolvedModsByFile
+  );
+  for (const [declaringFile, mods] of resolvedModsByFile) {
+    const declaringModule =
+      declaringModules.get(declaringFile) ?? modulePathOf(declaringFile, rootFileId);
     for (const mod of mods) {
-      const parentPath =
-        mod.inlinePath === ""
-          ? declaringModule
-          : `${declaringModule}/${mod.inlinePath}`;
-      attach(root, parentPath, mod.name, {
-        fileId: declaredFileId(mod, declaringFile, modulePaths),
+      attach(root, join(declaringModule, mod.inlinePath), mod.name, {
+        fileId: mod.resolvedFileId,
         children: new Map(),
       });
     }
@@ -363,6 +384,69 @@ function modulePathOf(fileId: string, rootFileId: string): string {
     ? withoutExtension.slice(0, -"/mod".length)
     : withoutExtension;
   return modulePath;
+}
+
+/**
+ * Maps each file to the virtual module path assigned by its declaration.
+ * Unreachable files retain a path-derived fallback so relative references
+ * from loose scan files remain deterministic.
+ */
+function modulePathsForDeclarations(
+  rootFileId: string,
+  rustPaths: readonly string[],
+  resolvedModsByFile: ReadonlyMap<
+    string,
+    readonly ResolvedModDeclaration[]
+  >
+): Map<string, string> {
+  const declaringModules = new Map<string, string>();
+  if (rootFileId !== "") {
+    declaringModules.set(rootFileId, "");
+  }
+  const pending = rootFileId === "" ? [] : [rootFileId];
+  const processed = new Set<string>();
+  let fallbackIndex = 0;
+  while (true) {
+    for (let index = 0; index < pending.length; index += 1) {
+      const declaringFile = pending[index];
+      if (
+        declaringFile === undefined ||
+        processed.has(declaringFile)
+      ) {
+        continue;
+      }
+      processed.add(declaringFile);
+      const declaringModule = declaringModules.get(declaringFile);
+      if (declaringModule === undefined) {
+        continue;
+      }
+      for (const mod of resolvedModsByFile.get(declaringFile) ?? []) {
+        if (
+          mod.resolvedFileId !== null &&
+          !declaringModules.has(mod.resolvedFileId)
+        ) {
+          declaringModules.set(
+            mod.resolvedFileId,
+            join(declaringModule, mod.inlinePath, mod.name)
+          );
+          pending.push(mod.resolvedFileId);
+        }
+      }
+    }
+    while (
+      fallbackIndex < rustPaths.length &&
+      declaringModules.has(rustPaths[fallbackIndex] ?? "")
+    ) {
+      fallbackIndex += 1;
+    }
+    const fallbackFile = rustPaths[fallbackIndex];
+    if (fallbackFile === undefined) {
+      return declaringModules;
+    }
+    declaringModules.set(fallbackFile, modulePathOf(fallbackFile, rootFileId));
+    pending.push(fallbackFile);
+    fallbackIndex += 1;
+  }
 }
 
 /**
