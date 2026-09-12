@@ -348,17 +348,20 @@ function buildCrate(
     modsByFile,
     null
   );
+  const rootIndependentModsByFile = resolveModDeclarations(
+    modulePaths,
+    modsByFile,
+    ""
+  );
+  const declaredFileIds = resolvedFileIds(
+    rootIndependentModsByFile,
+    false
+  );
 
-  // A candidate is a root only when resolving every other file with that
-  // candidate's module semantics does not declare it as a child.
-  const rootCandidates = rustPaths.filter((candidate) => {
-    const candidateModsByFile = resolveModDeclarations(
-      modulePaths,
-      modsByFile,
-      candidate
-    );
-    return !resolvedFileIds(candidateModsByFile).has(candidate);
-  });
+  // A candidate is a root when no non-root declaration targets it.
+  const rootCandidates = rustPaths.filter(
+    (candidate) => !declaredFileIds.has(candidate)
+  );
   // A binary crate's main.rs outranks a library root lib.rs: crate:: and
   // super:: anchors resolve against the runnable crate root.
   const rootFileId = selectRootFileId(
@@ -370,7 +373,7 @@ function buildCrate(
     modsByFile,
     rootFileId
   );
-  const declaredFileIds = resolvedFileIds(resolvedModsByFile);
+  const declaredModuleFileIds = resolvedFileIds(resolvedModsByFile);
 
   const root: ModuleTreeNode = {
     fileId: rootFileId,
@@ -383,13 +386,26 @@ function buildCrate(
     rustPaths,
     resolvedModsByFile
   );
+  const virtualModulePaths = new Set<string>();
+  for (const [declaringFile, mods] of resolvedModsByFile) {
+    const declaringModule =
+      declaringModules.get(declaringFile) ??
+      modulePathOf(declaringFile, rootFileId);
+    for (const mod of mods) {
+      if (mod.resolvedFileId === null) {
+        virtualModulePaths.add(
+          join(declaringModule, mod.inlinePath, mod.name)
+        );
+      }
+    }
+  }
   for (const [fileId, modulePath] of declaringModules) {
-    if (fileId !== rootFileId) {
+    if (fileId !== rootFileId && !virtualModulePaths.has(modulePath)) {
       attachFileNode(
         root,
         modulePath,
         fileId,
-        fileId === rootFileId || declaredFileIds.has(fileId)
+        fileId === rootFileId || declaredModuleFileIds.has(fileId)
       );
     }
   }
@@ -419,21 +435,25 @@ function selectRootFileId(
     readonly ResolvedModDeclaration[]
   >
 ): string {
-  return (
-    candidates.find((path) => basename(path) === BINARY_ROOT_FILE) ??
-    candidates.find((path) => basename(path) === LIBRARY_ROOT_FILE) ??
-    candidates.reduce((selected, candidate) => {
-      const selectedScore =
-        rootStyleModsByFile.get(selected)?.filter(
-          (mod) => mod.resolvedFileId !== null
-        ).length ?? 0;
-      const candidateScore =
-        rootStyleModsByFile.get(candidate)?.filter(
-          (mod) => mod.resolvedFileId !== null
-        ).length ?? 0;
-      return candidateScore > selectedScore ? candidate : selected;
-    }, candidates[0] ?? "")
+  const score = (path: string): number =>
+    rootStyleModsByFile.get(path)?.filter(
+      (mod) => mod.resolvedFileId !== null && !mod.isPathAttribute
+    ).length ?? 0;
+  const bestCandidate = candidates.reduce(
+    (selected, candidate) =>
+      score(candidate) > score(selected) ? candidate : selected,
+    candidates[0] ?? ""
   );
+  const conventionalRoot =
+    candidates.find((path) => basename(path) === BINARY_ROOT_FILE) ??
+    candidates.find((path) => basename(path) === LIBRARY_ROOT_FILE);
+  if (conventionalRoot === undefined) {
+    return bestCandidate;
+  }
+  return score(bestCandidate) >= 2 &&
+    score(bestCandidate) > score(conventionalRoot)
+    ? bestCandidate
+    : conventionalRoot;
 }
 
 /** Resolves every mod declaration against the selected crate-root semantics. */
@@ -468,12 +488,16 @@ function resolvedFileIds(
   resolvedModsByFile: ReadonlyMap<
     string,
     readonly ResolvedModDeclaration[]
-  >
+  >,
+  includePathAttributes = true
 ): Set<string> {
   const fileIds = new Set<string>();
   for (const mods of resolvedModsByFile.values()) {
     for (const mod of mods) {
-      if (mod.resolvedFileId !== null) {
+      if (
+        mod.resolvedFileId !== null &&
+        (includePathAttributes || !mod.isPathAttribute)
+      ) {
         fileIds.add(mod.resolvedFileId);
       }
     }
@@ -523,6 +547,7 @@ function modulePathsForDeclarations(
   const declaredFileIds = resolvedFileIds(resolvedModsByFile);
   let pendingIndex = 0;
   let fallbackIndex = 0;
+  let cycleIndex = 0;
   while (true) {
     while (pendingIndex < pending.length) {
       const declaringFile = pending[pendingIndex];
@@ -560,9 +585,13 @@ function modulePathsForDeclarations(
         break;
       }
     }
-    fallbackFile ??= rustPaths.find(
-      (path) => !declaringModules.has(path)
-    );
+    while (fallbackFile === undefined && cycleIndex < rustPaths.length) {
+      const candidate = rustPaths[cycleIndex];
+      cycleIndex += 1;
+      if (candidate !== undefined && !declaringModules.has(candidate)) {
+        fallbackFile = candidate;
+      }
+    }
     if (fallbackFile === undefined) {
       return declaringModules;
     }
