@@ -90,7 +90,6 @@ interface ResolvedModDeclaration extends ModDeclaration {
 /** A node in the crate module tree: file-backed, or virtual when null. */
 interface ModuleTreeNode {
   fileId: string | null;
-  ownerFileId: string | null;
   isDeclared: boolean;
   readonly children: Map<string, ModuleTreeNode>;
 }
@@ -386,7 +385,6 @@ function buildCrate(
 
   const root: ModuleTreeNode = {
     fileId: rootFileId,
-    ownerFileId: rootFileId,
     isDeclared: true,
     children: new Map(),
   };
@@ -436,7 +434,6 @@ function buildCrate(
     for (const mod of mods) {
       attach(root, join(declaringModule, mod.inlinePath), mod.name, {
         fileId: mod.resolvedFileId,
-        ownerFileId: mod.fileId === null ? declaringFile : null,
         isDeclared: true,
         children: new Map(),
       });
@@ -769,10 +766,13 @@ function resolveUsePath(
     }
     const hasSelf = segments[ups] === SELF_SEGMENT;
     rest = segments.slice(ups + (hasSelf ? 1 : 0));
-    let modulePath = declaringModulePath;
-    for (let index = 0; index < ups; index += 1) {
-      modulePath = dirname(modulePath);
+    const moduleSegments = declaringModulePath
+      .split("/")
+      .filter((segment) => segment !== "");
+    if (ups > moduleSegments.length) {
+      return null;
     }
+    const modulePath = moduleSegments.slice(0, -ups || undefined).join("/");
     const target = nodeAt(crate.root, modulePath);
     if (target === null) {
       return null;
@@ -803,11 +803,7 @@ function resolveUsePath(
     if (!child.isDeclared) {
       return null;
     }
-    const childFileId = child.fileId ?? child.ownerFileId;
-    if (childFileId === null) {
-      return null;
-    }
-    currentFile = childFileId;
+    currentFile = child.fileId;
     node = child;
   }
   return currentFile === declaringFile ? null : currentFile;
@@ -826,7 +822,6 @@ function attachFileNode(
   const parentPath = dirname(modulePath);
   attach(root, parentPath === "." ? "" : parentPath, basename(modulePath), {
     fileId,
-    ownerFileId: fileId,
     isDeclared,
     children: new Map(),
   });
@@ -852,9 +847,6 @@ function attach(
     if (existing.fileId === null && node.fileId !== null) {
       existing.fileId = node.fileId;
     }
-    if (existing.ownerFileId === null && node.ownerFileId !== null) {
-      existing.ownerFileId = node.ownerFileId;
-    }
     if (node.isDeclared) {
       existing.isDeclared = true;
     }
@@ -872,7 +864,6 @@ function getOrCreateChild(
   }
   const created: ModuleTreeNode = {
     fileId: null,
-    ownerFileId: null,
     isDeclared: false,
     children: new Map(),
   };
