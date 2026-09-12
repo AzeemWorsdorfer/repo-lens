@@ -400,13 +400,13 @@ function buildCrate(
     }
   }
   for (const [fileId, modulePath] of declaringModules) {
-    if (fileId !== rootFileId && !virtualModulePaths.has(modulePath)) {
-      attachFileNode(
-        root,
-        modulePath,
-        fileId,
-        fileId === rootFileId || declaredModuleFileIds.has(fileId)
-      );
+    const isDeclared =
+      fileId === rootFileId || declaredModuleFileIds.has(fileId);
+    if (
+      fileId !== rootFileId &&
+      (isDeclared || !isWithinVirtualModule(modulePath, virtualModulePaths))
+    ) {
+      attachFileNode(root, modulePath, fileId, isDeclared);
     }
   }
   for (const [declaringFile, mods] of resolvedModsByFile) {
@@ -444,16 +444,11 @@ function selectRootFileId(
       score(candidate) > score(selected) ? candidate : selected,
     candidates[0] ?? ""
   );
-  const conventionalRoot =
+  return (
     candidates.find((path) => basename(path) === BINARY_ROOT_FILE) ??
-    candidates.find((path) => basename(path) === LIBRARY_ROOT_FILE);
-  if (conventionalRoot === undefined) {
-    return bestCandidate;
-  }
-  return score(bestCandidate) >= 2 &&
-    score(bestCandidate) > score(conventionalRoot)
-    ? bestCandidate
-    : conventionalRoot;
+    candidates.find((path) => basename(path) === LIBRARY_ROOT_FILE) ??
+    bestCandidate
+  );
 }
 
 /** Resolves every mod declaration against the selected crate-root semantics. */
@@ -640,6 +635,21 @@ function declaredFileId(
  * their `#[path]`-aware file); use specifiers are `::`-paths resolved
  * through the tree.
  */
+function isWithinVirtualModule(
+  modulePath: string,
+  virtualModulePaths: ReadonlySet<string>
+): boolean {
+  for (const virtualPath of virtualModulePaths) {
+    if (
+      modulePath === virtualPath ||
+      modulePath.startsWith(`${virtualPath}/`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function resolveReference(
   reference: ImportReference,
   fromModule: string,
@@ -655,7 +665,9 @@ function resolveReference(
     // A mod declaration: a child of the declaring module.
     const declaringModule = nodeAt(crate.root, declaringModulePath);
     const mod = declaringModule?.children.get(segments[0] ?? "");
-    return mod === undefined || mod.fileId === null ? null : mod.fileId;
+    return mod === undefined || !mod.isDeclared || mod.fileId === null
+      ? null
+      : mod.fileId;
   }
   return resolveUsePath(segments, fromModule, declaringModulePath, crate);
 }
@@ -747,7 +759,11 @@ function resolveUsePath(
     if (!child.isDeclared) {
       return null;
     }
-    currentFile = child.fileId ?? child.ownerFileId;
+    const childFileId = child.fileId ?? child.ownerFileId;
+    if (childFileId === null) {
+      return null;
+    }
+    currentFile = childFileId;
     node = child;
   }
   return currentFile === declaringFile ? null : currentFile;

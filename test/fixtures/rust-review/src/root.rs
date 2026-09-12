@@ -1,6 +1,6 @@
 mod child;
 mod missing;
-#[path = "main.rs"]
+#[path = "module.rs"]
 mod worker;
 #[path = "extra.rs"]
 mod renamed;

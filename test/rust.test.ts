@@ -137,8 +137,8 @@ describe("repo-lens rust resolver", () => {
         kind: "import",
       },
       {
-        source: "src/main.rs",
-        target: "src/main/child.rs",
+        source: "src/module.rs",
+        target: "src/module/child.rs",
         kind: "import",
       },
       {
@@ -153,7 +153,7 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/root.rs",
-        target: "src/main.rs",
+        target: "src/module.rs",
         kind: "import",
       },
       {
