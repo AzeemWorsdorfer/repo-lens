@@ -1,5 +1,6 @@
 mod child;
-mod main;
+#[path = "main.rs"]
+mod worker;
 #[path = "extra.rs"]
 mod renamed;
 mod outer {

@@ -172,8 +172,18 @@ describe("repo-lens rust resolver", () => {
     const report = scanReport(RUST_FALLBACK);
     expect(report.edges).toEqual([
       {
+        source: "src/aaa_target.rs",
+        target: "src/z_parent.rs",
+        kind: "import",
+      },
+      {
         source: "src/loose/child.rs",
         target: "src/loose.rs",
+        kind: "import",
+      },
+      {
+        source: "src/z_parent.rs",
+        target: "src/aaa_target.rs",
         kind: "import",
       },
     ]);
