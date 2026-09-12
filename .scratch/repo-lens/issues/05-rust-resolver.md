@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Tracer bullet: scan a TS/JS repo into a deterministic JSON report
 
-**Status:** ready-for-agent
+**Status:** implemented on `fm/repo-lens-05-rust-resolver`; pending review
 
-- [ ] Rust resolver registered in the language registry
-- [ ] Rust fixture report shows correct modules and edges per fixture ground truth
-- [ ] Entrypoint detection flags the crate root
-- [ ] Subprocess seam tests prove graph accuracy for the fixture
+- [x] Rust resolver registered in the language registry
+- [x] Rust fixture report shows correct modules and edges per fixture ground truth
+- [x] Entrypoint detection flags the crate root
+- [x] Subprocess seam tests prove graph accuracy for the fixture

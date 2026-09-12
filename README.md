@@ -62,7 +62,8 @@ LLM configuration is provider-agnostic via environment variables:
 - [x] Python resolver (imports, relative imports, entry scripts, `__main__`)
 - [x] Go resolver (imports, `main()` entrypoints)
 - [x] Java resolver
-- [ ] Rust, C/C++ resolvers
+- [x] Rust resolver (mod/use, crate/self/super, `#[path]`, crate root)
+- [ ] C/C++ resolver
 - [ ] Interactive HTML report
 - [ ] LLM understanding layer
 - [ ] AXI output layer (TOON rendering, ticket 12)
