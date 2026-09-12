@@ -29,6 +29,13 @@ const DECISION_TYPES: string[] = [
   "type_case",
   "communication_case",
   "default_case",
+  // Rust equivalents per ADR 0002: if/while/for are expressions, each match
+  // arm is a branch, and `loop` is an unconditional cycle like Go's `for`.
+  "if_expression",
+  "while_expression",
+  "for_expression",
+  "loop_expression",
+  "match_arm",
 ];
 
 /** Operators that short-circuit and count as a decision point. */

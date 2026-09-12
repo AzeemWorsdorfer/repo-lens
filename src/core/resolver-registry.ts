@@ -9,6 +9,7 @@ import { TYPE_SCRIPT_RESOLVER } from "./resolvers/typescript-resolver.js";
 import { PYTHON_RESOLVER } from "./resolvers/python-resolver.js";
 import { GO_RESOLVER } from "./resolvers/go-resolver.js";
 import { JAVA_RESOLVER } from "./resolvers/java-resolver.js";
+import { RUST_RESOLVER } from "./resolvers/rust-resolver.js";
 import type { Node } from "web-tree-sitter";
 
 /** How an import/require reference was written, used as the edge kind. */
@@ -92,6 +93,7 @@ export const RESOLVERS: readonly LanguageResolver[] = [
   PYTHON_RESOLVER,
   GO_RESOLVER,
   JAVA_RESOLVER,
+  RUST_RESOLVER,
 ];
 
 /** Every extension across all resolvers, sorted, for cross-language lookups. */
