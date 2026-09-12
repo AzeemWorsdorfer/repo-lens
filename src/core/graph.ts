@@ -16,6 +16,7 @@ import {
   type ImportReference,
 } from "./resolver-registry.js";
 import type { Edge } from "./report-contract.js";
+import type { Node } from "web-tree-sitter";
 
 /** The resolved view of one source module before coupling/centrality are added. */
 export interface BuiltModule {
@@ -56,7 +57,7 @@ export async function analyze(root: string): Promise<Analysis> {
   const drafts: DraftModule[] = [];
   const importsByModule = new Map<string, readonly ImportReference[]>();
   const moduleMetadata = new Map<string, unknown>();
-  const entryScripts = new Set<string>();
+  const rootsByModule = new Map<string, Node>();
   for (const file of files) {
     const resolver = getResolverForPath(file);
     if (resolver === null) {
@@ -68,9 +69,7 @@ export async function analyze(root: string): Promise<Analysis> {
     if (metadata !== undefined) {
       moduleMetadata.set(file, metadata);
     }
-    if (resolver.isEntryScript?.(rootNode) === true) {
-      entryScripts.add(file);
-    }
+    rootsByModule.set(file, rootNode);
     drafts.push({
       id: file,
       path: file,
@@ -86,6 +85,20 @@ export async function analyze(root: string): Promise<Analysis> {
   const emittedEdges = new Set<string>();
   const depsByModule = new Map<string, string[]>();
   const resolveContext = { root: absolute, moduleMetadata };
+  const entryScripts = new Set<string>();
+  for (const [file, rootNode] of rootsByModule) {
+    const resolver = getResolverForPath(file);
+    if (
+      resolver?.isEntryScript?.(
+        rootNode,
+        file,
+        modulePaths,
+        resolveContext
+      ) === true
+    ) {
+      entryScripts.add(file);
+    }
+  }
   for (const draft of drafts) {
     const resolver = getResolverForPath(draft.id);
     if (resolver === null) {

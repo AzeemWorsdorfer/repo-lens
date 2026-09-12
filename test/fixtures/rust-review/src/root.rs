@@ -1,4 +1,5 @@
 mod child;
+mod missing;
 #[path = "main.rs"]
 mod worker;
 #[path = "extra.rs"]
@@ -8,4 +9,6 @@ mod outer {
 }
 
 use crate::{outer::service::*};
+use crate::missing::VALUE;
 use child::VALUE;
+use helper::VALUE;

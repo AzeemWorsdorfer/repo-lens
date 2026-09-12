@@ -30,6 +30,7 @@ import { basename, dirname, join } from "node:path/posix";
 import type {
   ImportReference,
   LanguageResolver,
+  ResolveContext,
   ResolvedImport,
 } from "../resolver-registry.js";
 
@@ -89,6 +90,8 @@ interface ResolvedModDeclaration extends ModDeclaration {
 /** A node in the crate module tree: file-backed, or virtual when null. */
 interface ModuleTreeNode {
   fileId: string | null;
+  ownerFileId: string | null;
+  isDeclared: boolean;
   readonly children: Map<string, ModuleTreeNode>;
 }
 
@@ -340,21 +343,22 @@ function buildCrate(
     }
   }
 
-  const rootIndependentModsByFile = resolveModDeclarations(
-    modulePaths,
-    modsByFile,
-    ""
-  );
   const rootStyleModsByFile = resolveModDeclarations(
     modulePaths,
     modsByFile,
     null
   );
-  const declaredFileIds = resolvedFileIds(rootIndependentModsByFile);
 
-  // The crate root is the file no scanned file declares as a child module;
-  // main.rs/lib.rs are the conventional fallbacks for single-file crates.
-  const rootCandidates = rustPaths.filter((path) => !declaredFileIds.has(path));
+  // A candidate is a root only when resolving every other file with that
+  // candidate's module semantics does not declare it as a child.
+  const rootCandidates = rustPaths.filter((candidate) => {
+    const candidateModsByFile = resolveModDeclarations(
+      modulePaths,
+      modsByFile,
+      candidate
+    );
+    return !resolvedFileIds(candidateModsByFile).has(candidate);
+  });
   // A binary crate's main.rs outranks a library root lib.rs: crate:: and
   // super:: anchors resolve against the runnable crate root.
   const rootFileId = selectRootFileId(
@@ -366,8 +370,14 @@ function buildCrate(
     modsByFile,
     rootFileId
   );
+  const declaredFileIds = resolvedFileIds(resolvedModsByFile);
 
-  const root: ModuleTreeNode = { fileId: rootFileId, children: new Map() };
+  const root: ModuleTreeNode = {
+    fileId: rootFileId,
+    ownerFileId: rootFileId,
+    isDeclared: true,
+    children: new Map(),
+  };
   const declaringModules = modulePathsForDeclarations(
     rootFileId,
     rustPaths,
@@ -375,7 +385,12 @@ function buildCrate(
   );
   for (const [fileId, modulePath] of declaringModules) {
     if (fileId !== rootFileId) {
-      attachFileNode(root, modulePath, fileId);
+      attachFileNode(
+        root,
+        modulePath,
+        fileId,
+        fileId === rootFileId || declaredFileIds.has(fileId)
+      );
     }
   }
   for (const [declaringFile, mods] of resolvedModsByFile) {
@@ -385,6 +400,8 @@ function buildCrate(
     for (const mod of mods) {
       attach(root, join(declaringModule, mod.inlinePath), mod.name, {
         fileId: mod.resolvedFileId,
+        ownerFileId: mod.fileId === null ? declaringFile : null,
+        isDeclared: true,
         children: new Map(),
       });
     }
@@ -698,9 +715,10 @@ function resolveUsePath(
       // the last resolved module, so depend on that module's file.
       return currentFile === declaringFile ? null : currentFile;
     }
-    if (child.fileId !== null) {
-      currentFile = child.fileId;
+    if (!child.isDeclared) {
+      return null;
     }
+    currentFile = child.fileId ?? child.ownerFileId;
     node = child;
   }
   return currentFile === declaringFile ? null : currentFile;
@@ -710,7 +728,8 @@ function resolveUsePath(
 function attachFileNode(
   root: ModuleTreeNode,
   modulePath: string,
-  fileId: string
+  fileId: string,
+  isDeclared: boolean
 ): void {
   if (modulePath === "") {
     return;
@@ -718,6 +737,8 @@ function attachFileNode(
   const parentPath = dirname(modulePath);
   attach(root, parentPath === "." ? "" : parentPath, basename(modulePath), {
     fileId,
+    ownerFileId: fileId,
+    isDeclared,
     children: new Map(),
   });
 }
@@ -738,8 +759,16 @@ function attach(
   const existing = current.children.get(name);
   if (existing === undefined) {
     current.children.set(name, node);
-  } else if (existing.fileId === null && node.fileId !== null) {
-    existing.fileId = node.fileId;
+  } else {
+    if (existing.fileId === null && node.fileId !== null) {
+      existing.fileId = node.fileId;
+    }
+    if (existing.ownerFileId === null && node.ownerFileId !== null) {
+      existing.ownerFileId = node.ownerFileId;
+    }
+    if (node.isDeclared) {
+      existing.isDeclared = true;
+    }
   }
 }
 
@@ -752,7 +781,12 @@ function getOrCreateChild(
   if (existing !== undefined) {
     return existing;
   }
-  const created: ModuleTreeNode = { fileId: null, children: new Map() };
+  const created: ModuleTreeNode = {
+    fileId: null,
+    ownerFileId: null,
+    isDeclared: false,
+    children: new Map(),
+  };
   parent.children.set(name, created);
   return created;
 }
@@ -777,8 +811,20 @@ function nodeAt(
   return node ?? null;
 }
 
-/** True when the file declares the top-level `fn main()` of a Rust binary. */
-function isEntryScript(root: Node): boolean {
+/** True when the crate root declares the top-level `fn main()` of a binary. */
+function isEntryScript(
+  root: Node,
+  path?: string,
+  modulePaths?: ReadonlySet<string>,
+  context?: ResolveContext
+): boolean {
+  if (path === undefined || modulePaths === undefined) {
+    return false;
+  }
+  const crateContext = crateFor(modulePaths, context?.moduleMetadata);
+  if (crateContext?.crate.rootFileId !== path) {
+    return false;
+  }
   return root.namedChildren.some(
     (node) =>
       node.type === FUNCTION_ITEM &&

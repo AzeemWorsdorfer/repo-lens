@@ -77,10 +77,15 @@ export interface LanguageResolver {
   moduleMetadataFor?(root: Node): unknown;
   /**
    * True when a parsed module is an entry script for its ecosystem (e.g. a
-   * Python `__name__ == "__main__"` guard). Absent for languages whose
-   * entrypoints are found by metadata only.
+   * Python `__name__ == "__main__"` guard). Optional scan context allows
+   * resolvers to apply repository-level rules such as crate-root ownership.
    */
-  isEntryScript?(root: Node): boolean;
+  isEntryScript?(
+    root: Node,
+    path?: string,
+    modulePaths?: ReadonlySet<string>,
+    context?: ResolveContext
+  ): boolean;
   /**
    * True when a module path is an entrypoint for its ecosystem without
    * needing a parse (e.g. Python's `__main__.py`). Absent for languages

@@ -163,9 +163,11 @@ describe("repo-lens rust resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 6,
+      modules: 7,
       edges: 7,
+      entrypoints: 0,
     });
+    expect(report.entrypoints).toEqual([]);
   });
 
   it("keeps loose module parents file-backed for relative uses", () => {
@@ -239,7 +241,7 @@ describe("repo-lens rust resolver", () => {
   it("honors .gitignore for Rust files", () => {
     const report = scanReport(RUST);
     expect(report.modules.map((module) => module.id)).not.toContain(
-      "scratch.rs"
+      "src/scratch.rs"
     );
   });
 
