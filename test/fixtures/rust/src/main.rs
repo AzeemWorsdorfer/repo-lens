@@ -3,6 +3,7 @@ mod cli;
 mod nested {
     pub mod leaf;
 }
+mod service;
 
 pub const MAIN_MESSAGE: &str = "ready";
 

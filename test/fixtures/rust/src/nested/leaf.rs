@@ -6,5 +6,8 @@ use std::collections::HashMap;
 
 pub fn ready() -> bool {
     let map: HashMap<String, i32> = HashMap::new();
-    reader::has(&map)
+    if reader::has() {
+        return !map.is_empty();
+    }
+    false
 }

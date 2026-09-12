@@ -13,7 +13,9 @@ const RUST = fileURLToPath(new URL("./fixtures/rust", import.meta.url));
 describe("repo-lens rust resolver", () => {
   it("discovers Rust source files and reports them as modules", () => {
     const report = scanReport(RUST);
-    expect(report.meta.languages).toEqual([{ language: "rust", fileCount: 8 }]);
+    expect(report.meta.languages).toEqual([
+      { language: "rust", fileCount: 10 },
+    ]);
     expect(report.modules.map((module) => module.id)).toEqual([
       "src/alias.rs",
       "src/cli.rs",
@@ -23,6 +25,8 @@ describe("repo-lens rust resolver", () => {
       "src/nested/leaf.rs",
       "src/nested/reader.rs",
       "src/no_main.rs",
+      "src/service/auth.rs",
+      "src/service/mod.rs",
     ]);
   });
 
@@ -30,9 +34,10 @@ describe("repo-lens rust resolver", () => {
     const report = scanReport(RUST);
     // std, serde_json, and tracing are external and must not become edges;
     // super::/self::/crate:: paths, `mod` declarations (including an
-    // #[path]-remapped one), and an aliased use all resolve through the
-    // module tree. The unlinked `mod orphan;` has no file and produces no
-    // edge, and duplicated mod/use references dedupe to one edge.
+    // #[path]-remapped one and the x/mod.rs layout), brace-list leaves, and
+    // an aliased use all resolve through the module tree. The unlinked
+    // `mod orphan;` has no file and produces no edge, and duplicated
+    // mod/use references dedupe to one edge.
     expect(report.edges).toEqual([
       {
         source: "src/cli.rs",
@@ -60,6 +65,11 @@ describe("repo-lens rust resolver", () => {
         kind: "import",
       },
       {
+        source: "src/main.rs",
+        target: "src/service/mod.rs",
+        kind: "import",
+      },
+      {
         source: "src/nested/leaf.rs",
         target: "src/cli.rs",
         kind: "import",
@@ -74,20 +84,32 @@ describe("repo-lens rust resolver", () => {
         target: "src/cli.rs",
         kind: "import",
       },
+      {
+        source: "src/no_main.rs",
+        target: "src/nested/reader.rs",
+        kind: "import",
+      },
+      {
+        source: "src/no_main.rs",
+        target: "src/service/auth.rs",
+        kind: "import",
+      },
+      {
+        source: "src/service/auth.rs",
+        target: "src/service/mod.rs",
+        kind: "import",
+      },
+      {
+        source: "src/service/mod.rs",
+        target: "src/service/auth.rs",
+        kind: "import",
+      },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 8,
-      edges: 8,
-      cycles: 1,
+      modules: 10,
+      edges: 13,
+      cycles: 2,
     });
-  });
-
-  it("reports the main.rs/cli.rs mutual dependency as one cycle", () => {
-    const report = scanReport(RUST);
-    // main.rs declares `mod cli;` while cli.rs reads a crate-root const via
-    // `use super::MAIN_MESSAGE;`: a genuine two-module cycle that Tarjan
-    // reports once, members sorted.
-    expect(report.cycles).toEqual([["src/cli.rs", "src/main.rs"]]);
   });
 
   it("flags the crate root main.rs as the sole entrypoint", () => {
@@ -98,18 +120,34 @@ describe("repo-lens rust resolver", () => {
     expect(report.meta.counts.entrypoints).toBe(1);
   });
 
+  it("reports the fixture's two mutual dependencies as cycles", () => {
+    const report = scanReport(RUST);
+    // main.rs declares `mod cli;` while cli.rs reads a crate-root const via
+    // `use super::MAIN_MESSAGE;`; service/mod.rs declares `mod auth;` while
+    // auth.rs reads `super::SERVICE_TAG`. Each pair is one Tarjan cycle,
+    // members sorted.
+    expect(report.cycles).toEqual([
+      ["src/cli.rs", "src/main.rs"],
+      ["src/service/auth.rs", "src/service/mod.rs"],
+    ]);
+  });
+
   it("counts Rust decision nodes in cyclomatic complexity", () => {
     const report = scanReport(RUST);
     // main.rs: one if_expression plus one && short-circuit.
     const main = report.modules.find((module) => module.id === "src/main.rs");
     expect(main?.complexity).toBe(3);
-    expect(main?.deps).toEqual(["src/alias.rs", "src/cli.rs"]);
-    // no_main.rs: one if_expression and two match_arms.
+    expect(main?.deps).toEqual([
+      "src/alias.rs",
+      "src/cli.rs",
+      "src/service/mod.rs",
+    ]);
+    // no_main.rs: one if_expression, two match_arms, one &&.
     const noMain = report.modules.find(
       (module) => module.id === "src/no_main.rs"
     );
-    expect(noMain?.complexity).toBe(4);
-    // cli.rs: no decision points, but three dependents.
+    expect(noMain?.complexity).toBe(5);
+    // cli.rs: no decision points, but four dependents.
     const cli = report.modules.find((module) => module.id === "src/cli.rs");
     expect(cli?.complexity).toBe(1);
     expect(cli?.dependents).toEqual([

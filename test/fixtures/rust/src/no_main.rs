@@ -1,3 +1,4 @@
+use crate::{service::auth, nested::leaf::reader as r};
 use crate::cli as c;
 
 pub fn classify(value: i32) -> &'static str {
@@ -12,5 +13,5 @@ pub fn classify(value: i32) -> &'static str {
 }
 
 pub fn aliased() -> bool {
-    c::enabled()
+    c::enabled() && r::has()
 }

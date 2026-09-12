@@ -16,7 +16,13 @@
  * crate root (the scanned file no other file declares as a child), `self::`
  * and `super::` walk relative to the declaring module, and any other leading
  * segment names an external crate (std, serde, ...) that stays external.
- * Brace lists expand to every leaf and aliases keep their path's target.
+ * Brace lists expand to one reference per leaf and aliases keep their
+ * path's target; a path ending on an item rather than a module depends on
+ * the module declaring that item.
+ *
+ * Deliberate v1 limits: one crate tree per scan, so multi-crate workspaces
+ * resolve `crate::` against the discovered root only; `extern crate`
+ * declarations are ignored (they name a crate, never a module file).
  */
 import type { Node } from "web-tree-sitter";
 import { basename, dirname, join } from "node:path/posix";
@@ -33,7 +39,10 @@ const RUST_EXTENSION = ".rs";
 /** Tree-sitter node types for the Rust constructs the resolver matches. */
 const MOD_ITEM = "mod_item";
 const USE_DECLARATION = "use_declaration";
+const USE_LIST = "use_list";
+const SCOPED_USE_LIST = "scoped_use_list";
 const USE_AS_CLAUSE = "use_as_clause";
+const USE_WILDCARD = "use_wildcard";
 const FUNCTION_ITEM = "function_item";
 const ATTRIBUTE_ITEM = "attribute_item";
 const ATTRIBUTE = "attribute";
@@ -94,8 +103,8 @@ const CRATE_CACHE = new WeakMap<ReadonlyMap<string, unknown>, CrateContext>();
 /**
  * Extracts one import reference per top-level `mod`/`use` declaration:
  * file-backed mods carry their resolved specifier, inline mods are skipped
- * (they introduce no cross-file reference), and uses carry their raw path
- * text for later tree resolution.
+ * (they introduce no cross-file reference), and each use declaration
+ * expands to one reference per leaf of its brace-list tree.
  */
 function extractImports(root: Node): ImportReference[] {
   const references: ImportReference[] = [];
@@ -108,7 +117,9 @@ function extractImports(root: Node): ImportReference[] {
     } else if (declaration.type === USE_DECLARATION) {
       const argument = declaration.childForFieldName("argument");
       if (argument !== null) {
-        references.push({ specifier: useSpecifier(argument), kind: "import" });
+        for (const leaf of useLeaves(argument, "")) {
+          references.push({ specifier: leaf, kind: "import" });
+        }
       }
     }
   }
@@ -116,14 +127,37 @@ function extractImports(root: Node): ImportReference[] {
 }
 
 /**
- * The resolvable path text of a use argument: an alias renames the binding
- * without changing its path, so `a::b as c` resolves as `a::b`.
+ * Flattens a use argument into concrete path specifiers: brace lists expand
+ * to every leaf (`a::{b, c::d}` yields `a::b` and `a::c::d`), an alias
+ * resolves to its path part, a wildcard names its prefix module, and plain
+ * paths pass through unchanged.
  */
-function useSpecifier(argument: Node): string {
-  if (argument.type === USE_AS_CLAUSE) {
-    return argument.childForFieldName("path")?.text ?? argument.text;
+function useLeaves(node: Node, prefix: string): string[] {
+  if (node.type === USE_LIST) {
+    return node.namedChildren.flatMap((child) => useLeaves(child, prefix));
   }
-  return argument.text;
+  if (node.type === SCOPED_USE_LIST) {
+    const path = node.childForFieldName("path");
+    const scopedPrefix = joinPath(prefix, path?.text ?? "");
+    return node.namedChildren
+      .filter((child) => child.id !== path?.id)
+      .flatMap((child) => useLeaves(child, scopedPrefix));
+  }
+  if (node.type === USE_AS_CLAUSE) {
+    return [joinPath(prefix, node.childForFieldName("path")?.text ?? "")];
+  }
+  if (node.type === USE_WILDCARD) {
+    return [prefix];
+  }
+  return [joinPath(prefix, node.text)];
+}
+
+/** Joins a use-tree prefix with one segment, keeping empty prefixes out. */
+function joinPath(prefix: string, segment: string): string {
+  if (prefix === "") {
+    return segment;
+  }
+  return segment === "" ? prefix : `${prefix}::${segment}`;
 }
 
 /** The specifier of a file-backed `mod x;`, or null for an inline mod. */
@@ -383,11 +417,13 @@ function resolveReference(
   return resolveUsePath(segments, fromModule, crate);
 }
 
-/** The directory a `mod x;` is declared from, handling `mod.rs` files. */
+/**
+ * The directory a `mod x;` is declared from: the directory containing the
+ * declaring file. A `mod.rs` file's module is its own directory, so its
+ * children resolve beside it exactly like a non-mod.rs file's do.
+ */
 function declaringDirectory(fileId: string): string {
-  return basename(fileId) === "mod.rs"
-    ? dirname(dirname(fileId))
-    : dirname(fileId);
+  return dirname(fileId);
 }
 
 /**
