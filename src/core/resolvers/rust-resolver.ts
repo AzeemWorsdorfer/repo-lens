@@ -341,7 +341,7 @@ function buildCrate(
   moduleMetadata: ReadonlyMap<string, unknown>
 ): CrateContext {
   const rustPaths = [...modulePaths]
-    .filter((path) => path.endsWith(RUST_EXTENSION))
+    .filter((path) => path.toLowerCase().endsWith(RUST_EXTENSION))
     .sort();
 
   const modsByFile = new Map<string, readonly ModDeclaration[]>();
@@ -357,9 +357,16 @@ function buildCrate(
     modsByFile,
     null
   );
+  const declaredRootChildren = resolvedFileIds(rootStyleModsByFile, false);
+  const rootCandidates = rustPaths.filter(
+    (candidate) => !declaredRootChildren.has(candidate)
+  );
   // A binary crate's main.rs outranks a library root lib.rs: crate:: and
   // super:: anchors resolve against the runnable crate root.
-  const rootFileId = selectRootFileId(rustPaths, rootStyleModsByFile);
+  const rootFileId = selectRootFileId(
+    rootCandidates.length > 0 ? rootCandidates : rustPaths,
+    rootStyleModsByFile
+  );
   const resolvedModsByFile = resolveModDeclarations(
     modulePaths,
     modsByFile,
@@ -447,11 +454,13 @@ function selectRootFileId(
   return (
     candidates.find(
       (path) =>
-        isCrateRootLocation(path) && basename(path) === BINARY_ROOT_FILE
+        isCrateRootLocation(path) &&
+        basename(path).toLowerCase() === BINARY_ROOT_FILE
     ) ??
     candidates.find(
       (path) =>
-        isCrateRootLocation(path) && basename(path) === LIBRARY_ROOT_FILE
+        isCrateRootLocation(path) &&
+        basename(path).toLowerCase() === LIBRARY_ROOT_FILE
     ) ??
     bestCandidate
   );
