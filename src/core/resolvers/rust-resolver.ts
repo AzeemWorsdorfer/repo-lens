@@ -445,10 +445,21 @@ function selectRootFileId(
     candidates[0] ?? ""
   );
   return (
-    candidates.find((path) => basename(path) === BINARY_ROOT_FILE) ??
-    candidates.find((path) => basename(path) === LIBRARY_ROOT_FILE) ??
+    candidates.find(
+      (path) =>
+        isCrateRootLocation(path) && basename(path) === BINARY_ROOT_FILE
+    ) ??
+    candidates.find(
+      (path) =>
+        isCrateRootLocation(path) && basename(path) === LIBRARY_ROOT_FILE
+    ) ??
     bestCandidate
   );
+}
+
+function isCrateRootLocation(path: string): boolean {
+  const parent = dirname(path);
+  return parent === "." || basename(parent) === "src";
 }
 
 /** Resolves every mod declaration against the selected crate-root semantics. */
@@ -586,6 +597,9 @@ function modulePathsForDeclarations(
             mod.resolvedFileId,
             join(declaringModule, mod.inlinePath, mod.name)
           );
+          if (fallbackFiles.has(declaringFile)) {
+            fallbackFiles.add(mod.resolvedFileId);
+          }
           pending.push(mod.resolvedFileId);
         }
       }

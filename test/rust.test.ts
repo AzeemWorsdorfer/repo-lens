@@ -168,7 +168,7 @@ describe("repo-lens rust resolver", () => {
       },
     ]);
     expect(report.meta.counts).toMatchObject({
-      modules: 9,
+      modules: 10,
       edges: 8,
       entrypoints: 0,
     });
