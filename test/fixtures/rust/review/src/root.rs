@@ -6,3 +6,4 @@ mod outer {
 }
 
 use crate::{outer::service::*};
+use child::VALUE;

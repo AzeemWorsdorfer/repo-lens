@@ -2,6 +2,7 @@ mod alias;
 mod cli;
 mod nested {
     pub mod leaf;
+    use self::leaf;
 }
 mod service;
 

@@ -14,8 +14,9 @@
  *
  * `use` references resolve through the same tree: `crate::` anchors at the
  * crate root (the scanned file no other file declares as a child), `self::`
- * and `super::` walk relative to the declaring module, and any other leading
- * segment names an external crate (std, serde, ...) that stays external.
+ * and `super::` walk relative to the declaring module, unqualified paths try
+ * the local module tree first, and unresolved leading segments stay external
+ * (std, serde, ...).
  * Brace lists expand to one reference per leaf and aliases keep their
  * path's target; a path ending on an item rather than a module depends on
  * the module declaring that item.
@@ -43,7 +44,6 @@ const USE_LIST = "use_list";
 const SCOPED_USE_LIST = "scoped_use_list";
 const USE_AS_CLAUSE = "use_as_clause";
 const USE_WILDCARD = "use_wildcard";
-const WILDCARD_SUFFIX = "::*";
 const FUNCTION_ITEM = "function_item";
 const ATTRIBUTE_ITEM = "attribute_item";
 const ATTRIBUTE = "attribute";
@@ -107,29 +107,51 @@ interface CrateContext {
 const CRATE_CACHE = new WeakMap<ReadonlyMap<string, unknown>, CrateContext>();
 
 /**
- * Extracts one import reference per top-level `mod`/`use` declaration:
- * file-backed mods carry their resolved specifier, inline mods are skipped
- * (they introduce no cross-file reference), and each use declaration
- * expands to one reference per leaf of its brace-list tree.
+ * Extracts import references from source scopes: file-backed mods become
+ * edges, inline mods are traversed for their children and uses, and each use
+ * declaration expands to one reference per leaf of its brace-list tree.
  */
 function extractImports(root: Node): ImportReference[] {
+  return importsInScope(root, "");
+}
+
+/** Collects imports from one source scope and recursively visits inline mods. */
+function importsInScope(scope: Node, moduleScope: string): ImportReference[] {
   const references: ImportReference[] = [];
-  for (const declaration of root.namedChildren) {
+  for (const declaration of scope.namedChildren) {
     if (declaration.type === MOD_ITEM) {
       const specifier = fileModSpecifier(declaration);
       if (specifier !== null) {
-        references.push({ specifier, kind: "import" });
+        references.push({ specifier, kind: "import", moduleScope });
+      }
+      const body = declaration.childForFieldName("body");
+      if (body !== null) {
+        references.push(
+          ...importsInScope(
+            body,
+            joinInline(moduleScope, declarationName(declaration))
+          )
+        );
       }
     } else if (declaration.type === USE_DECLARATION) {
       const argument = declaration.childForFieldName("argument");
       if (argument !== null) {
         for (const leaf of useLeaves(argument, "")) {
-          references.push({ specifier: leaf, kind: "import" });
+          references.push({
+            specifier: leaf,
+            kind: "import",
+            moduleScope,
+          });
         }
       }
     }
   }
   return references;
+}
+
+/** Returns the name of an inline module for recursive import traversal. */
+function declarationName(declaration: Node): string {
+  return declaration.childForFieldName("name")?.text ?? "";
 }
 
 /**
@@ -153,10 +175,7 @@ function useLeaves(node: Node, prefix: string): string[] {
     return [joinPath(prefix, node.childForFieldName("path")?.text ?? "")];
   }
   if (node.type === USE_WILDCARD) {
-    const wildcardPath = node.text.endsWith(WILDCARD_SUFFIX)
-      ? node.text.slice(0, -WILDCARD_SUFFIX.length)
-      : "";
-    return [joinPath(prefix, wildcardPath)];
+    return [joinPath(prefix, node.text)];
   }
   return [joinPath(prefix, node.text)];
 }
@@ -312,24 +331,19 @@ function buildCrate(
     }
   }
 
-  const resolvedModsByFile = new Map<
-    string,
-    readonly ResolvedModDeclaration[]
-  >();
-  const declaredFileIds = new Set<string>();
-  for (const [declaringFile, mods] of modsByFile) {
-    const resolvedMods = mods.map((mod) => {
-      const resolvedFileId = declaredFileId(
-        mod,
-        declaringFile,
-        modulePaths
-      );
-      if (resolvedFileId !== null) {
-        declaredFileIds.add(resolvedFileId);
-      }
-      return { ...mod, resolvedFileId };
-    });
-    resolvedModsByFile.set(declaringFile, resolvedMods);
+  const initialResolvedModsByFile = resolveModDeclarations(
+    modulePaths,
+    modsByFile,
+    null
+  );
+  const moduleResolvedModsByFile = resolveModDeclarations(
+    modulePaths,
+    modsByFile,
+    ""
+  );
+  const declaredFileIds = resolvedFileIds(initialResolvedModsByFile);
+  for (const fileId of resolvedFileIds(moduleResolvedModsByFile)) {
+    declaredFileIds.add(fileId);
   }
 
   // The crate root is the file no scanned file declares as a child module;
@@ -343,6 +357,11 @@ function buildCrate(
     rootCandidates[0] ??
     rustPaths[0] ??
     "";
+  const resolvedModsByFile = resolveModDeclarations(
+    modulePaths,
+    modsByFile,
+    rootFileId
+  );
 
   const root: ModuleTreeNode = { fileId: rootFileId, children: new Map() };
   const declaringModules = modulePathsForDeclarations(
@@ -352,7 +371,8 @@ function buildCrate(
   );
   for (const [declaringFile, mods] of resolvedModsByFile) {
     const declaringModule =
-      declaringModules.get(declaringFile) ?? modulePathOf(declaringFile, rootFileId);
+      declaringModules.get(declaringFile) ??
+      modulePathOf(declaringFile, rootFileId);
     for (const mod of mods) {
       attach(root, join(declaringModule, mod.inlinePath), mod.name, {
         fileId: mod.resolvedFileId,
@@ -363,6 +383,51 @@ function buildCrate(
   return {
     crate: { root, rootFileId, declaringModules },
   };
+}
+
+/** Resolves every mod declaration against the selected crate-root semantics. */
+function resolveModDeclarations(
+  modulePaths: ReadonlySet<string>,
+  modsByFile: ReadonlyMap<string, readonly ModDeclaration[]>,
+  rootFileId: string | null
+): Map<string, readonly ResolvedModDeclaration[]> {
+  const resolvedModsByFile = new Map<
+    string,
+    readonly ResolvedModDeclaration[]
+  >();
+  for (const [declaringFile, mods] of modsByFile) {
+    resolvedModsByFile.set(
+      declaringFile,
+      mods.map((mod) => ({
+        ...mod,
+        resolvedFileId: declaredFileId(
+          mod,
+          declaringFile,
+          modulePaths,
+          rootFileId
+        ),
+      }))
+    );
+  }
+  return resolvedModsByFile;
+}
+
+/** Collects file-backed declaration targets for root-candidate selection. */
+function resolvedFileIds(
+  resolvedModsByFile: ReadonlyMap<
+    string,
+    readonly ResolvedModDeclaration[]
+  >
+): Set<string> {
+  const fileIds = new Set<string>();
+  for (const mods of resolvedModsByFile.values()) {
+    for (const mod of mods) {
+      if (mod.resolvedFileId !== null) {
+        fileIds.add(mod.resolvedFileId);
+      }
+    }
+  }
+  return fileIds;
 }
 
 /**
@@ -409,10 +474,7 @@ function modulePathsForDeclarations(
   while (true) {
     for (let index = 0; index < pending.length; index += 1) {
       const declaringFile = pending[index];
-      if (
-        declaringFile === undefined ||
-        processed.has(declaringFile)
-      ) {
+      if (declaringFile === undefined || processed.has(declaringFile)) {
         continue;
       }
       processed.add(declaringFile);
@@ -459,12 +521,16 @@ function modulePathsForDeclarations(
 function declaredFileId(
   mod: ModDeclaration,
   declaringFile: string,
-  modulePaths: ReadonlySet<string>
+  modulePaths: ReadonlySet<string>,
+  rootFileId: string | null
 ): string | null {
   if (mod.fileId === null) {
     return null;
   }
-  const directory = join(declaringDirectory(declaringFile), mod.inlinePath);
+  const directory = join(
+    declaringDirectory(declaringFile, rootFileId),
+    mod.inlinePath
+  );
   const base = normalizeAttributePath(mod.fileId);
   const direct = join(directory, base);
   if (modulePaths.has(direct)) {
@@ -489,36 +555,58 @@ function resolveReference(
   crate: CrateTree
 ): ResolvedImport {
   const segments = reference.specifier.split("::");
+  const declaringModulePath = modulePathForReference(
+    reference,
+    fromModule,
+    crate
+  );
   if (segments.length === 1) {
     // A mod declaration: a child of the declaring module.
-    const declaringModule = nodeAt(
-      crate.root,
-      crate.declaringModules.get(fromModule) ?? ""
-    );
+    const declaringModule = nodeAt(crate.root, declaringModulePath);
     const mod = declaringModule?.children.get(segments[0] ?? "");
     return mod === undefined || mod.fileId === null ? null : mod.fileId;
   }
-  return resolveUsePath(segments, fromModule, crate);
+  return resolveUsePath(segments, fromModule, declaringModulePath, crate);
 }
 
-/**
- * The directory a `mod x;` is declared from: the directory containing the
- * declaring file. A `mod.rs` file's module is its own directory, so its
- * children resolve beside it exactly like a non-mod.rs file's do.
- */
-function declaringDirectory(fileId: string): string {
-  return dirname(fileId);
+/** Returns the logical module path containing one extracted reference. */
+function modulePathForReference(
+  reference: ImportReference,
+  fromModule: string,
+  crate: CrateTree
+): string {
+  const declaringModule = crate.declaringModules.get(fromModule) ?? "";
+  return join(declaringModule, reference.moduleScope ?? "");
+}
+
+/** Returns the source directory where a file module's children are found. */
+function declaringDirectory(fileId: string, rootFileId: string | null): string {
+  const directory = dirname(fileId);
+  if (rootFileId === null || fileId === rootFileId) {
+    return directory;
+  }
+  const fileName = basename(fileId);
+  if (
+    fileName === "mod.rs" ||
+    fileName === BINARY_ROOT_FILE ||
+    fileName === LIBRARY_ROOT_FILE
+  ) {
+    return directory;
+  }
+  return join(directory, fileName.slice(0, -RUST_EXTENSION.length));
 }
 
 /**
  * Resolves a `use` path's segments to a module id. Anchors decide the
  * starting node: `crate` at the root, `self`/`super` relative to the
- * declaring module, anything else external. Virtual intermediate nodes pass
- * resolution through; only the final file id becomes the edge target.
+ * declaring module, and unqualified paths at that module. Virtual
+ * intermediate nodes pass resolution through; only the final file id becomes
+ * the edge target.
  */
 function resolveUsePath(
   segments: readonly string[],
   declaringFile: string,
+  declaringModulePath: string,
   crate: CrateTree
 ): ResolvedImport {
   const [first = ""] = segments;
@@ -536,7 +624,7 @@ function resolveUsePath(
     }
     const hasSelf = segments[ups] === SELF_SEGMENT;
     rest = segments.slice(ups + (hasSelf ? 1 : 0));
-    let modulePath = crate.declaringModules.get(declaringFile) ?? "";
+    let modulePath = declaringModulePath;
     for (let index = 0; index < ups; index += 1) {
       modulePath = dirname(modulePath);
     }
@@ -545,17 +633,26 @@ function resolveUsePath(
       return null;
     }
     node = target;
-    currentFile = target.fileId;
+    currentFile = target.fileId ?? declaringFile;
   } else {
-    // Any other leading segment names an external crate: std, serde, ...
-    return null;
+    const target = nodeAt(crate.root, declaringModulePath);
+    if (target === null) {
+      return null;
+    }
+    node = target;
+    currentFile = target.fileId ?? declaringFile;
+    rest = segments;
   }
 
-  for (const segment of rest) {
-    const child = node.children.get(segment);
+  for (let index = 0; index < rest.length; index += 1) {
+    const segment = rest[index];
+    const child = node.children.get(segment ?? "");
     if (child === undefined) {
-      // The path names an item inside the last resolved module (e.g.
-      // `use super::CONST`), so depend on that module's file.
+      if (index < rest.length - 1) {
+        return null;
+      }
+      // The final segment may name an item (or the wildcard marker) inside
+      // the last resolved module, so depend on that module's file.
       return currentFile === declaringFile ? null : currentFile;
     }
     if (child.fileId !== null) {

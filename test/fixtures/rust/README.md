@@ -14,18 +14,20 @@ Ground truth per file:
 
 - `src/main.rs` - the crate root and only entrypoint. Declares `mod
 alias;`, `mod cli;`, the inline `mod nested { pub mod leaf; }` (mapping
-  `nested/leaf.rs`), and `mod service;` (mapping `service/mod.rs`). Uses
-  both via `mod`. Complexity 3 (one `if`, one `&&`).
+  `nested/leaf.rs`), and `mod service;` (mapping `service/mod.rs`). The
+  inline leaf's `mod reader;` maps under `nested/leaf/`. Uses both via `mod`.
+  Complexity 3 (one `if`, one `&&`).
 - `src/cli.rs` - file module `cli`. Uses `super::MAIN_MESSAGE` (the crate
   root, `main.rs`). Complexity 1.
 - `src/nested/leaf.rs` - file module `nested::leaf` (the `nested.rs` file is
   deliberately absent; the directory convention alone must not invent a
-  module). Declares `mod reader;` and uses it via `self::reader` (both spell
-  one deduped edge), and `super::super::cli` (resolves to `cli.rs`), plus
-  `std::collections::HashMap` (external). Complexity 2 (one `if`).
-- `src/nested/reader.rs` - file module `nested::reader`, referenced via
-  `mod reader;`/`self::reader` from `leaf.rs` and via the brace leaf
-  `nested::leaf::reader as r` from `no_main.rs`. Uses
+  module). Declares `mod reader;` under `nested/leaf/` and uses it via
+  `self::reader` (both spell one deduped edge), and `super::super::cli`
+  (resolves to `cli.rs`), plus `std::collections::HashMap` (external).
+  Complexity 2 (one `if`).
+- `src/nested/leaf/reader.rs` - file module `nested::leaf::reader`,
+  referenced via `mod reader;`/`self::reader` from `leaf.rs` and via the
+  brace leaf `nested::leaf::reader as r` from `no_main.rs`. Uses
   `std::collections::HashMap` (external). Complexity 1.
 - `src/lib.rs` - the library root: declares `mod renamed;` remapped by
   `#[path = "extra/under_a_different_name.rs"]`, and `#[cfg(test)] mod tests`
@@ -57,11 +59,12 @@ Edges (all kind `import`, source -> target):
 - `src/main.rs` -> `src/alias.rs` (via `mod alias;`)
 - `src/main.rs` -> `src/cli.rs` (via `mod cli;`)
 - `src/main.rs` -> `src/service/mod.rs` (via `mod service;`)
+- `src/main.rs` -> `src/nested/leaf.rs` (via the inline module declaration)
 - `src/nested/leaf.rs` -> `src/cli.rs` (via `super::super::cli`)
-- `src/nested/leaf.rs` -> `src/nested/reader.rs` (via `mod reader;` and
-  `self::reader`, deduped to one edge)
+- `src/nested/leaf.rs` -> `src/nested/leaf/reader.rs` (via `mod reader;`
+  and `self::reader`, deduped to one edge)
 - `src/no_main.rs` -> `src/cli.rs` (via `crate::cli as c`)
-- `src/no_main.rs` -> `src/nested/reader.rs` (via the aliased brace leaf)
+- `src/no_main.rs` -> `src/nested/leaf/reader.rs` (via the aliased brace leaf)
 - `src/no_main.rs` -> `src/service/auth.rs` (via the brace leaf)
 - `src/service/auth.rs` -> `src/service/mod.rs` (via `super::SERVICE_TAG`)
 - `src/service/mod.rs` -> `src/service/auth.rs` (via `mod auth;`)

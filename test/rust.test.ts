@@ -26,7 +26,7 @@ describe("repo-lens rust resolver", () => {
       "src/lib.rs",
       "src/main.rs",
       "src/nested/leaf.rs",
-      "src/nested/reader.rs",
+      "src/nested/leaf/reader.rs",
       "src/no_main.rs",
       "src/service/auth.rs",
       "src/service/mod.rs",
@@ -69,6 +69,11 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/main.rs",
+        target: "src/nested/leaf.rs",
+        kind: "import",
+      },
+      {
+        source: "src/main.rs",
         target: "src/service/mod.rs",
         kind: "import",
       },
@@ -79,7 +84,7 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/nested/leaf.rs",
-        target: "src/nested/reader.rs",
+        target: "src/nested/leaf/reader.rs",
         kind: "import",
       },
       {
@@ -89,7 +94,7 @@ describe("repo-lens rust resolver", () => {
       },
       {
         source: "src/no_main.rs",
-        target: "src/nested/reader.rs",
+        target: "src/nested/leaf/reader.rs",
         kind: "import",
       },
       {
@@ -110,7 +115,7 @@ describe("repo-lens rust resolver", () => {
     ]);
     expect(report.meta.counts).toMatchObject({
       modules: 10,
-      edges: 13,
+      edges: 14,
       cycles: 2,
     });
   });
@@ -121,6 +126,11 @@ describe("repo-lens rust resolver", () => {
       {
         source: "src/extra.rs",
         target: "src/child.rs",
+        kind: "import",
+      },
+      {
+        source: "src/extra.rs",
+        target: "src/root.rs",
         kind: "import",
       },
       {
@@ -141,7 +151,7 @@ describe("repo-lens rust resolver", () => {
     ]);
     expect(report.meta.counts).toMatchObject({
       modules: 4,
-      edges: 4,
+      edges: 5,
     });
   });
 
@@ -173,6 +183,7 @@ describe("repo-lens rust resolver", () => {
     expect(main?.deps).toEqual([
       "src/alias.rs",
       "src/cli.rs",
+      "src/nested/leaf.rs",
       "src/service/mod.rs",
     ]);
     // no_main.rs: one if_expression, two match_arms, one &&.

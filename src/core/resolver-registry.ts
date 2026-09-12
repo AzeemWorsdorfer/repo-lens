@@ -32,6 +32,8 @@ export interface ImportReference {
   /** The module specifier as written, e.g. "./utils" or "lodash". */
   readonly specifier: string;
   readonly kind: ImportKind;
+  /** Virtual module scope relative to the source file, when applicable. */
+  readonly moduleScope?: string;
   /** True for language forms whose member resolution differs from packages. */
   readonly isStatic?: boolean;
 }
